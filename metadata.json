@@ -1,0 +1,12 @@
+{
+  "name": "WILDCLEINT",
+  "description": "A powerful and creative AI assistant named WILDCLEINT.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

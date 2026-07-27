@@ -1,0 +1,110 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId}
+    // Fields:
+    //   - uid: string (required)
+    //   - email: string (required)
+    //   - displayName: string (optional)
+    //   - photoURL: string (optional)
+    //   - createdAt: timestamp (optional)
+    //
+    // Collection: sessions
+    // Document ID: {sessionId}
+    // Fields:
+    //   - userId: string (required)
+    //   - title: string (required)
+    //   - createdAt: timestamp (required)
+    //   - updatedAt: timestamp (required)
+    //
+    // Collection: sessions/{sessionId}/messages
+    // Document ID: {messageId}
+    // Fields:
+    //   - role: string (required, 'user' or 'assistant')
+    //   - content: string (required)
+    //   - timestamp: number (required)
+    //   - attachments: list (optional)
+    //
+    // Collection: feedback
+    // Document ID: {feedbackId}
+    // Fields:
+    //   - userId: string (required)
+    //   - message: string (required)
+    //   - timestamp: timestamp (required)
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    // --- Domain Validators ---
+    function isValidUser() {
+      return hasRequiredFields(['uid', 'email']) &&
+             request.resource.data.uid == request.auth.uid &&
+             request.resource.data.email is string;
+    }
+
+    function isValidSession() {
+      return hasRequiredFields(['userId', 'title', 'createdAt', 'updatedAt']) &&
+             request.resource.data.userId == request.auth.uid &&
+             request.resource.data.title is string &&
+             request.resource.data.title.size() <= 200;
+    }
+
+    function isValidMessage() {
+      return hasRequiredFields(['role', 'content', 'timestamp']) &&
+             request.resource.data.role in ['user', 'assistant'] &&
+             request.resource.data.content is string &&
+             request.resource.data.content.size() <= 100000 &&
+             request.resource.data.timestamp is number &&
+             (!('reaction' in request.resource.data) || request.resource.data.reaction == null || request.resource.data.reaction in ['thumbs_up', 'thumbs_down', 'heart']);
+    }
+
+    function isValidFeedback() {
+      return hasRequiredFields(['userId', 'content', 'type', 'createdAt']) &&
+             request.resource.data.userId == request.auth.uid &&
+             request.resource.data.content is string &&
+             request.resource.data.content.size() <= 2000 &&
+             request.resource.data.type is string;
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUser();
+      allow update: if isOwner(userId) && isValidUser() && (!('uid' in resource.data) || request.resource.data.uid == resource.data.uid);
+      allow delete: if isOwner(userId);
+    }
+
+    match /sessions/{sessionId} {
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated() && isValidSession();
+      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid && isValidSession() && request.resource.data.userId == resource.data.userId;
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      
+      match /messages/{messageId} {
+        allow read: if isAuthenticated() && exists(/databases/$(database)/documents/sessions/$(sessionId)) && get(/databases/$(database)/documents/sessions/$(sessionId)).data.userId == request.auth.uid;
+        allow create: if isAuthenticated() && exists(/databases/$(database)/documents/sessions/$(sessionId)) && get(/databases/$(database)/documents/sessions/$(sessionId)).data.userId == request.auth.uid && isValidMessage();
+        allow update: if isAuthenticated() && exists(/databases/$(database)/documents/sessions/$(sessionId)) && get(/databases/$(database)/documents/sessions/$(sessionId)).data.userId == request.auth.uid && isValidMessage();
+        allow delete: if isAuthenticated() && exists(/databases/$(database)/documents/sessions/$(sessionId)) && get(/databases/$(database)/documents/sessions/$(sessionId)).data.userId == request.auth.uid;
+      }
+    }
+
+    match /feedback/{feedbackId} {
+      allow create: if isAuthenticated() && isValidFeedback();
+      allow read: if isOwner(resource.data.userId);
+    }
+  }
+}
