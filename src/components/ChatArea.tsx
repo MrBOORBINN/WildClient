@@ -54,9 +54,9 @@ const ChatArea = ({
               {[
                 { label: 'Summarize Chat', icon: <FileText size={18} className="text-[#4285f4]" />, color: 'bg-blue-500/10', action: handleSummarizeChat },
                 { label: 'Write anything', icon: <Layout size={18} className="text-[#ea4335]" />, color: 'bg-red-500/10', action: () => handleAction('Write anything') }
-              ].map(action => (
+              ].map((action, aIdx) => (
                 <button 
-                  key={action.label}
+                  key={`chat-action-${action.label || aIdx}`}
                   onClick={action.action}
                   className="flex flex-col items-center gap-2 p-4 rounded-xl border border-white/5 hover:bg-white/5 transition-all group"
                 >
@@ -70,9 +70,9 @@ const ChatArea = ({
           </div>
         ) : (
           <div className="space-y-4">
-            {messages.map((msg) => (
+            {messages.map((msg, mIdx) => (
               <motion.div 
-                key={msg.id}
+                key={msg.id ? `chat-msg-${msg.id}` : `chat-msg-idx-${mIdx}`}
                 initial={{ opacity: 0, y: 5 }}
                 animate={{ opacity: 1, y: 0 }}
                 className={cn(
@@ -92,7 +92,7 @@ const ChatArea = ({
                   {msg.attachments && msg.attachments.length > 0 && (
                     <div className="flex gap-2 mb-2 overflow-x-auto">
                       {msg.attachments.map((att: any, idx: number) => (
-                        <img key={idx} src={att.data || undefined} alt="attachment" className="w-20 h-20 object-cover rounded-lg border border-white/10" />
+                        <img key={`chat-att-${msg.id || mIdx}-${att.id || idx}`} src={att.data || undefined} alt="attachment" className="w-20 h-20 object-cover rounded-lg border border-white/10" />
                       ))}
                     </div>
                   )}

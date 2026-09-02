@@ -147,24 +147,12 @@ const Sidebar = ({
             <AudioLines size={14} className="text-[#ff4e00]" />
             <span>Text to Speech</span>
           </button>
-          <button onClick={() => onAction('Canvas')} className="flex items-center gap-3 w-full p-2 rounded-lg hover:bg-white/5 transition-colors text-sm text-[#c4c7c5]">
-            <PenTool size={14} className="text-[#34a853]" />
-            <span>Canvas</span>
-          </button>
-          <button onClick={() => onAction('Guided Learning')} className="flex items-center gap-3 w-full p-2 rounded-lg hover:bg-white/5 transition-colors text-sm text-[#c4c7c5]">
-            <GraduationCap size={14} className="text-[#ea4335]" />
-            <span>Guided Learning</span>
-          </button>
-          <button onClick={onOpenConsole} className="flex items-center gap-3 w-full p-2 rounded-lg hover:bg-white/5 transition-colors text-sm text-[#c4c7c5]">
-            <Cloud size={14} className="text-[#4285f4]" />
-            <span>Cloud Console</span>
-          </button>
         </div>
 
         <div className="text-[10px] font-bold text-[#8e918f] uppercase tracking-wider px-2 mb-2">Recent</div>
-        {sessions.map((session) => (
+        {sessions.map((session, sIdx) => (
           <div 
-            key={session.id}
+            key={session.id ? `sidebar-session-${session.id}` : `sidebar-session-idx-${sIdx}`}
             className={cn(
               "group flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all text-sm",
               currentSessionId === session.id ? "bg-white/10 text-white" : "text-[#c4c7c5] hover:bg-white/5"
@@ -187,13 +175,6 @@ const Sidebar = ({
 
       <div className="mt-auto pt-4 border-t border-white/5 space-y-1">
         <button 
-          onClick={onOpenDrive}
-          className="flex items-center gap-3 w-full p-2 rounded-lg hover:bg-white/5 transition-colors text-sm text-[#c4c7c5]"
-        >
-          <Cloud size={16} />
-          <span>Google Drive</span>
-        </button>
-        <button 
           onClick={onOpenBackground}
           className="flex items-center gap-3 w-full p-2 rounded-lg hover:bg-white/5 transition-colors text-sm text-[#c4c7c5]"
         >
@@ -211,15 +192,15 @@ const Sidebar = ({
           onClick={onOpenProfile}
           className="flex items-center gap-3 w-full p-2 rounded-lg hover:bg-white/5 transition-colors text-sm text-[#c4c7c5]"
         >
-          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#ff4e00] to-[#ff0080] flex items-center justify-center text-[10px] font-bold overflow-hidden">
-            {user?.avatar_url ? (
-              <img src={user.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
+          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#ff4e00] to-[#ff0080] flex items-center justify-center text-[10px] font-bold overflow-hidden shrink-0">
+            {user?.avatarUrl || user?.photoURL || user?.avatar_url ? (
+              <img src={user.avatarUrl || user.photoURL || user.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
             ) : (
-              user?.email?.[0]?.toUpperCase() || 'U'
+              (user?.displayName || user?.full_name || user?.email || 'U')[0]?.toUpperCase()
             )}
           </div>
-          <span className="truncate">{user?.full_name || user?.email || 'User'}</span>
-          <Settings size={14} className="ml-auto opacity-50" />
+          <span className="truncate">{user?.displayName || user?.full_name || user?.email || 'User'}</span>
+          <Settings size={14} className="ml-auto opacity-50 shrink-0" />
         </button>
       </div>
     </div>

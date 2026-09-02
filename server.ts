@@ -14,12 +14,22 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json());
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
   // SSE endpoint for streaming chat
+  app.options("/api/chat", (req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.sendStatus(204);
+  });
+
   app.post("/api/chat", async (req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
     const ai = new GoogleGenAI({ 
-      apiKey: process.env.GEMINI_API_KEY,
+      apiKey: apiKey,
       httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
     });
 

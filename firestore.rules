@@ -84,20 +84,20 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isOwner(userId);
       allow create: if isOwner(userId) && isValidUser();
-      allow update: if isOwner(userId) && isValidUser() && (!('uid' in resource.data) || request.resource.data.uid == resource.data.uid);
+      allow update: if isOwner(userId) && (!('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid);
       allow delete: if isOwner(userId);
     }
 
     match /sessions/{sessionId} {
       allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
       allow create: if isAuthenticated() && isValidSession();
-      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid && isValidSession() && request.resource.data.userId == resource.data.userId;
+      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid && (!('userId' in request.resource.data) || request.resource.data.userId == resource.data.userId);
       allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
       
       match /messages/{messageId} {
         allow read: if isAuthenticated() && exists(/databases/$(database)/documents/sessions/$(sessionId)) && get(/databases/$(database)/documents/sessions/$(sessionId)).data.userId == request.auth.uid;
         allow create: if isAuthenticated() && exists(/databases/$(database)/documents/sessions/$(sessionId)) && get(/databases/$(database)/documents/sessions/$(sessionId)).data.userId == request.auth.uid && isValidMessage();
-        allow update: if isAuthenticated() && exists(/databases/$(database)/documents/sessions/$(sessionId)) && get(/databases/$(database)/documents/sessions/$(sessionId)).data.userId == request.auth.uid && isValidMessage();
+        allow update: if isAuthenticated() && exists(/databases/$(database)/documents/sessions/$(sessionId)) && get(/databases/$(database)/documents/sessions/$(sessionId)).data.userId == request.auth.uid;
         allow delete: if isAuthenticated() && exists(/databases/$(database)/documents/sessions/$(sessionId)) && get(/databases/$(database)/documents/sessions/$(sessionId)).data.userId == request.auth.uid;
       }
     }

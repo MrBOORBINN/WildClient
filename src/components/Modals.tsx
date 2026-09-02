@@ -53,13 +53,13 @@ export const PhotoModal = ({
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-[#8e918f] uppercase">Style</label>
                 <select value={style} onChange={(e) => setStyle(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none">
-                  {['Photorealistic', 'Digital Art', 'Oil Painting', 'Sketch', 'Cyberpunk', 'Anime'].map(s => <option key={s} value={s} className="bg-[#1e1f20]">{s}</option>)}
+                  {['Photorealistic', 'Digital Art', 'Oil Painting', 'Sketch', 'Cyberpunk', 'Anime'].map(s => <option key={`photo-style-${s}`} value={s} className="bg-[#1e1f20]">{s}</option>)}
                 </select>
               </div>
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-[#8e918f] uppercase">Aspect Ratio</label>
                 <select value={aspectRatio} onChange={(e) => setAspectRatio(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none">
-                  {['1:1', '16:9', '9:16'].map(a => <option key={a} value={a} className="bg-[#1e1f20]">{a}</option>)}
+                  {['1:1', '16:9', '9:16'].map(a => <option key={`photo-ratio-${a}`} value={a} className="bg-[#1e1f20]">{a}</option>)}
                 </select>
               </div>
             </div>
@@ -115,13 +115,13 @@ export const MusicModal = ({
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-[#8e918f] uppercase">Genre</label>
                 <select value={genre} onChange={(e) => setGenre(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none">
-                  {['Lo-fi', 'Cinematic', 'Electronic', 'Ambient', 'Jazz', 'Rock', 'Classical', 'Hip Hop', 'Synthwave', 'Acoustic'].map(g => <option key={g} value={g} className="bg-[#1e1f20]">{g}</option>)}
+                  {['Lo-fi', 'Cinematic', 'Electronic', 'Ambient', 'Jazz', 'Rock', 'Classical', 'Hip Hop', 'Synthwave', 'Acoustic'].map(g => <option key={`modal-music-genre-${g}`} value={g} className="bg-[#1e1f20]">{g}</option>)}
                 </select>
               </div>
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-[#8e918f] uppercase">Mood</label>
                 <select value={mood} onChange={(e) => setMood(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none">
-                  {['Relaxing', 'Energetic', 'Melancholic', 'Epic', 'Mysterious', 'Happy', 'Dark', 'Peaceful', 'Intense'].map(m => <option key={m} value={m} className="bg-[#1e1f20]">{m}</option>)}
+                  {['Relaxing', 'Energetic', 'Melancholic', 'Epic', 'Mysterious', 'Happy', 'Dark', 'Peaceful', 'Intense'].map(m => <option key={`modal-music-mood-${m}`} value={m} className="bg-[#1e1f20]">{m}</option>)}
                 </select>
               </div>
             </div>
@@ -182,9 +182,9 @@ export const DriveModal = ({
               {files.length === 0 ? (
                 <div className="text-center py-12 text-[#8e918f]">No files found in your Drive</div>
               ) : (
-                files.map((file) => (
+                files.map((file, fIdx) => (
                   <div 
-                    key={file.id}
+                    key={file.id ? `modal-drive-${file.id}` : `modal-drive-idx-${fIdx}`}
                     onClick={() => onSelect(file)}
                     className="flex items-center gap-4 p-3 rounded-xl hover:bg-white/5 cursor-pointer transition-colors border border-transparent hover:border-white/10"
                   >
@@ -261,7 +261,7 @@ export const HelpModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
 
             <div className="flex-1 overflow-y-auto p-8 space-y-6 custom-scrollbar">
               {faqs.map((faq, index) => (
-                <div key={index} className="space-y-2">
+                <div key={`modal-faq-${index}`} className="space-y-2">
                   <h3 className="text-lg font-semibold text-white flex items-start gap-3">
                     <span className="text-[#9b72cb] font-mono">0{index + 1}.</span>
                     {faq.question}
@@ -275,7 +275,7 @@ export const HelpModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
 
             <div className="p-6 bg-white/5 border-t border-white/5 text-center shrink-0">
               <p className="text-sm text-[#8e918f]">
-                Need more help? Contact us at <span className="text-[#4285f4]">support@wildcleint.ai</span>
+                Need more help? Contact us at <span className="text-[#4285f4]">infbuisness01@gmail.com</span>
               </p>
             </div>
           </motion.div>
@@ -350,9 +350,9 @@ export const BackgroundSettingsModal = ({
                   >
                     <span className="text-xs font-bold">Default Liquid</span>
                   </button>
-                  {gallery.map((bg) => (
+                  {gallery.map((bg, bIdx) => (
                     <button 
-                      key={bg.name}
+                      key={`modal-bg-${bg.name || bIdx}-${bIdx}`}
                       onClick={() => onSelect(bg.url)}
                       className={cn(
                         "aspect-video rounded-xl border-2 transition-all overflow-hidden relative group",

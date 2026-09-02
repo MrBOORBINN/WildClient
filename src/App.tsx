@@ -205,9 +205,9 @@ const DriveModal = ({
               {(files?.length || 0) === 0 ? (
                 <div className="text-center py-12 text-[#8e918f]">No files found in your Drive</div>
               ) : (
-                files.map((file) => (
+                files.map((file, idx) => (
                   <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} 
-                    key={file.id}
+                    key={file.id ? `app-file-${file.id}` : `app-file-idx-${idx}`}
                     onClick={() => onSelect(file)}
                     className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 transition-colors text-left group"
                   >
@@ -278,14 +278,14 @@ const CalendarModal = ({
               {events.length === 0 ? (
                 <div className="text-center py-12 text-[#8e918f]">No upcoming events found</div>
               ) : (
-                events.map((event) => {
+                events.map((event, idx) => {
                   const startTime = event.start.dateTime ? new Date(event.start.dateTime) : new Date(event.start.date);
                   const endTime = event.end.dateTime ? new Date(event.end.dateTime) : new Date(event.end.date);
                   const isAllDay = !event.start.dateTime;
                   
                   return (
                     <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} 
-                      key={event.id}
+                      key={event.id ? `app-event-${event.id}` : `app-event-idx-${idx}`}
                       onClick={() => onSelect(event)}
                       className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 transition-colors text-left group"
                     >
@@ -358,26 +358,6 @@ const Sidebar = ({
     )}
   >
     <div className="p-3 flex flex-col h-full">
-      <div className="mb-4 space-y-2">
-        <label htmlFor="deepResearchInput" className="sr-only">Deep Research and Link AI</label>
-        <div className="relative group">
-          <input 
-            id="deepResearchInput"
-            type="text" 
-            placeholder="Deep Research..." 
-            className="w-full bg-white/5 border border-white/10 rounded-xl py-2 pl-9 pr-3 text-[13px] text-[#e3e3e3] placeholder:text-[#8e918f] focus:outline-none focus:ring-1 focus:ring-[#4285f4] transition-all"
-            aria-label="Deep Research Input"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && e.currentTarget.value.trim()) {
-                 onAction(`Deep Research: ${e.currentTarget.value.trim()}`);
-                 e.currentTarget.value = '';
-              }
-            }}
-          />
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8e918f] group-focus-within:text-[#4285f4] transition-colors" aria-hidden="true" />
-        </div>
-      </div>
-
       <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} 
         onClick={onNewChat}
         aria-label="New chat"
@@ -388,27 +368,12 @@ const Sidebar = ({
       </motion.button>
 
       <div className="flex-1 overflow-y-auto space-y-1 custom-scrollbar pr-1">
-        <div className="space-y-1 mb-4">
-          <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => onAction('Deep Research')} aria-label="Deep Research" className="flex items-center gap-3 w-full p-2 rounded-lg hover:bg-white/5 transition-colors text-sm text-[#c4c7c5]">
-            <Search size={14} className="text-[#4285f4]" aria-hidden="true" />
-            <span>Deep Research</span>
-          </motion.button>
-          <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => onAction('Canvas')} aria-label="Canvas" className="flex items-center gap-3 w-full p-2 rounded-lg hover:bg-white/5 transition-colors text-sm text-[#c4c7c5]">
-            <PenTool size={14} className="text-[#34a853]" aria-hidden="true" />
-            <span>Canvas</span>
-          </motion.button>
-          <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => onAction('Guided Learning')} aria-label="Guided Learning" className="flex items-center gap-3 w-full p-2 rounded-lg hover:bg-white/5 transition-colors text-sm text-[#c4c7c5]">
-            <GraduationCap size={14} className="text-[#ea4335]" aria-hidden="true" />
-            <span>Guided Learning</span>
-          </motion.button>
-        </div>
-
         <div className="text-[10px] font-bold text-[#8e918f] uppercase tracking-wider px-2 mb-2 flex items-center justify-between">
           <span>Recent</span>
         </div>
-            {sessions?.map((session) => (
+            {sessions?.map((session, sIdx) => (
               <div 
-                key={session.id}
+                key={session.id ? `app-session-${session.id}` : `app-session-idx-${sIdx}`}
                 role="button"
                 tabIndex={0}
                 aria-label={`Switch to chat ${session.title || 'New Conversation'}`}
@@ -444,22 +409,6 @@ const Sidebar = ({
       </div>
 
       <div className="mt-auto pt-4 border-t border-white/5 space-y-1">
-        <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} 
-          onClick={onOpenDrive}
-          aria-label="Google Drive Integration"
-          className="flex items-center gap-3 w-full p-2 rounded-lg hover:bg-white/5 transition-colors text-sm text-[#c4c7c5]"
-        >
-          <Cloud size={16} aria-hidden="true" />
-          <span>Google Drive</span>
-        </motion.button>
-        <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} 
-          onClick={onOpenCalendar}
-          aria-label="Google Calendar Integration"
-          className="flex items-center gap-3 w-full p-2 rounded-lg hover:bg-white/5 transition-colors text-sm text-[#c4c7c5]"
-        >
-          <CalendarIcon size={16} aria-hidden="true" />
-          <span>Google Calendar</span>
-        </motion.button>
         <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} 
           onClick={onOpenBackground}
           aria-label="Background Settings"
@@ -689,9 +638,9 @@ const BackgroundSettingsModal = ({
                         <span className="text-xs font-medium">Default (Liquid)</span>
                       </div>
                     </motion.button>
-                    {gallery.map((bg) => (
+                    {gallery.map((bg, bIdx) => (
                       <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-                        key={bg.name}
+                        key={`app-gallery-bg-${bg.name || bIdx}-${bIdx}`}
                         onClick={() => onSelect(bg.url)}
                         className={cn(
                           "relative aspect-video rounded-xl overflow-hidden border-2 transition-all group",
@@ -776,9 +725,9 @@ const VoiceSettingsModal = ({
             <div className="space-y-3">
               <label className="text-[10px] font-bold text-[#8e918f] uppercase tracking-wider">Creator Voices (Natural)</label>
               <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto custom-scrollbar pr-2">
-                {creatorVoices.filter(v => !(v as any).ttsOnly).map((voice) => (
+                {creatorVoices.filter(v => !(v as any).ttsOnly).map((voice, vIdx) => (
                   <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-                    key={voice.id}
+                    key={`app-creator-voice-${voice.id || vIdx}`}
                     onClick={() => {
                       setSelectedVoice(voice.id);
                       setVoicePitch(voice.pitch);
@@ -965,7 +914,7 @@ const HelpModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }
 
             <div className="p-6 bg-white/5 border-t border-white/5 text-center shrink-0">
               <p className="text-sm text-[#8e918f]">
-                Need more help? Contact us at <span className="text-[#4285f4]">support@wildcleint.ai</span>
+                Need more help? Contact us at <span className="text-[#4285f4]">infbuisness01@gmail.com</span>
               </p>
             </div>
           </motion.div>
@@ -1326,14 +1275,19 @@ export default function App() {
 
   useEffect(() => {
     if (user) {
+      const activeName = userData?.fullName || user.displayName || '';
+      const activeEmail = userData?.email || user.email || '';
+      const activeAvatarUrl = userData?.avatarUrl || (user.photoURL && user.photoURL.startsWith('http') ? user.photoURL : '');
+      const activeInitial = (activeName || activeEmail || 'U')[0]?.toUpperCase() || 'U';
+
       setProfileData({
-        fullName: user.displayName || '',
-        email: user.email || '',
-        avatar: user.email?.[0]?.toUpperCase() || 'U',
-        avatarUrl: user.photoURL || ''
+        fullName: activeName,
+        email: activeEmail,
+        avatar: activeInitial,
+        avatarUrl: activeAvatarUrl
       });
     }
-  }, [user]);
+  }, [user, userData]);
 
   useEffect(() => {
     if (!user) {
@@ -1697,23 +1651,70 @@ export default function App() {
     }
   };
 
+  const compressImageToDataUrl = (file: File, maxWidth = 160, maxHeight = 160, quality = 0.85): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > maxWidth) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            }
+          } else {
+            if (height > maxHeight) {
+              width = Math.round((width * maxHeight) / height);
+              height = maxHeight;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve(event.target?.result as string);
+            return;
+          }
+          ctx.drawImage(img, 0, 0, width, height);
+          const dataUrl = canvas.toDataURL('image/jpeg', quality);
+          resolve(dataUrl);
+        };
+        img.onerror = () => resolve(event.target?.result as string);
+        img.src = event.target?.result as string;
+      };
+      reader.onerror = (err) => reject(err);
+      reader.readAsDataURL(file);
+    });
+  };
+
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const base64 = event.target?.result as string;
+    try {
+      const compressedDataUrl = await compressImageToDataUrl(file, 160, 160, 0.85);
+      setProfileData(prev => ({ ...prev, avatarUrl: compressedDataUrl }));
+
       try {
-        const fileRef = ref(storage, `avatars/${Date.now()}-${Math.random().toString(36).substring(7)}.png`);
-        await uploadString(fileRef, base64, 'data_url');
-        const url = await getDownloadURL(fileRef);
-        setProfileData(prev => ({ ...prev, avatarUrl: url }));
+        if (storage) {
+          const fileRef = ref(storage, `avatars/${user?.uid || 'user'}_${Date.now()}.jpg`);
+          await uploadString(fileRef, compressedDataUrl, 'data_url');
+          const url = await getDownloadURL(fileRef);
+          if (url) {
+            setProfileData(prev => ({ ...prev, avatarUrl: url }));
+          }
+        }
       } catch (error) {
-        console.error("Error uploading avatar:", error);
+        console.warn("Storage upload not available, using compressed avatar data:", error);
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (error) {
+      console.error("Error processing avatar:", error);
+    }
   };
 
   const handleDeleteSession = async (sessionId: string) => {
@@ -1730,11 +1731,50 @@ export default function App() {
   const handleSaveProfile = async () => {
     if (!user) return;
     try {
-      await updateProfile(user, {
-        displayName: profileData.fullName,
-        photoURL: profileData.avatarUrl
-      });
-      setUser({ ...user, displayName: profileData.fullName, photoURL: profileData.avatarUrl });
+      const isHttpPhotoUrl = typeof profileData.avatarUrl === 'string' &&
+                             profileData.avatarUrl.startsWith('http') &&
+                             profileData.avatarUrl.length <= 2048;
+
+      // 1. Save to Firestore users collection
+      try {
+        await setDoc(doc(db, 'users', user.uid), {
+          uid: user.uid,
+          email: user.email || profileData.email || '',
+          fullName: profileData.fullName || user.displayName || '',
+          avatarUrl: profileData.avatarUrl || '',
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+      } catch (firestoreErr) {
+        console.warn('Firestore profile save warning:', firestoreErr);
+      }
+
+      // 2. Safely attempt Firebase Auth updateProfile without passing large data URLs
+      try {
+        const updatePayload: { displayName?: string; photoURL?: string } = {
+          displayName: profileData.fullName || user.displayName || ''
+        };
+        if (isHttpPhotoUrl) {
+          updatePayload.photoURL = profileData.avatarUrl;
+        }
+        await updateProfile(user, updatePayload);
+      } catch (authErr) {
+        console.warn('Firebase Auth updateProfile non-critical warning:', authErr);
+      }
+
+      // 3. Update local state
+      setUser((prev: any) => prev ? ({
+        ...prev,
+        displayName: profileData.fullName || prev?.displayName,
+        photoURL: isHttpPhotoUrl ? profileData.avatarUrl : (prev?.photoURL || '')
+      }) : null);
+
+      setUserData((prev: any) => ({
+        ...prev,
+        fullName: profileData.fullName,
+        email: profileData.email || prev?.email,
+        avatarUrl: profileData.avatarUrl
+      }));
+
       setIsProfileModalOpen(false);
     } catch (err) {
       console.error('Failed to save profile', err);
@@ -2103,18 +2143,6 @@ export default function App() {
           </div>
           <div className="flex items-center gap-3">
             <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} 
-              onClick={handleSummarizeChat}
-              disabled={isSummarizing || messages.length === 0}
-              className={cn(
-                "flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-all",
-                isSummarizing ? "bg-white/5 text-[#8e918f] cursor-not-allowed" : "bg-white/5 text-[#c4c7c5] hover:bg-white/10"
-              )}
-              title="Summarize entire conversation"
-            >
-              <FileText size={14} className={isSummarizing ? "animate-pulse" : ""} />
-              <span className="hidden sm:inline">{isSummarizing ? 'Summarizing...' : 'Summarize'}</span>
-            </motion.button>
-            <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} 
               onClick={() => setIsProfileModalOpen(true)}
               className="w-7 h-7 rounded-full bg-gradient-to-br from-[#ff4e00] to-[#ff0080] flex items-center justify-center text-[10px] font-bold shadow-lg hover:scale-105 transition-transform"
             >
@@ -2146,9 +2174,9 @@ export default function App() {
                     { label: 'Summarize Chat', icon: <FileText size={18} className="text-[#ea4335]" />, color: 'bg-red-500/10', action: handleSummarizeChat },
                     { label: 'Write anything', icon: <Layout size={18} className="text-[#fbbc04]" />, color: 'bg-yellow-500/10', action: () => handleAction('Write anything') },
                     { label: 'Text to Voice', icon: <AudioLines size={18} className="text-[#34a853]" />, color: 'bg-green-500/10', action: () => handleAction('Text to Voice') }
-                  ].map(action => (
+                  ].map((action, aIdx) => (
                     <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} 
-                      key={action.label}
+                      key={`app-chat-action-${action.label || aIdx}`}
                       onClick={action.action}
                       className="flex flex-col items-center gap-2 p-4 rounded-xl border border-white/5 hover:bg-white/5 transition-all group"
                     >
@@ -2162,9 +2190,9 @@ export default function App() {
               </div>
             ) : (
               <div className="space-y-4">
-                {messages.map((msg) => (
+                {messages.map((msg, mIdx) => (
                   <motion.div 
-                    key={msg.id}
+                    key={msg.id ? `app-msg-${msg.id}` : `app-msg-idx-${mIdx}`}
                     initial={{ opacity: 0, y: 5 }}
                     animate={{ opacity: 1, y: 0 }}
                     className={cn(
@@ -2179,7 +2207,7 @@ export default function App() {
                       {msg.attachments && msg.attachments.length > 0 && (
                         <div className="flex gap-2 mb-2 overflow-x-auto">
                           {msg.attachments.map((att: any, idx: number) => (
-                            <img key={`${msg.id}-att-${idx}`} src={att.data || undefined} alt="attachment" className="w-20 h-20 object-cover rounded-lg border border-white/10" />
+                            <img key={`app-msg-att-${msg.id || mIdx}-${att.id || idx}`} src={att.data || undefined} alt="attachment" className="w-20 h-20 object-cover rounded-lg border border-white/10" />
                           ))}
                         </div>
                       )}
@@ -2193,52 +2221,6 @@ export default function App() {
                           {msg.content}
                         </Markdown>
                       </div>
-
-                      {msg.role === 'assistant' && (
-                        <div className="flex items-center gap-1.5 mt-3 border-t border-white/5 pt-2">
-                          <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-                            onClick={() => handleToggleReaction(msg.id, 'thumbs_up')}
-                            className={cn(
-                              "flex items-center gap-1.5 px-2 py-1 rounded-full border text-xs font-medium transition-all duration-200 cursor-pointer",
-                              msg.reaction === 'thumbs_up'
-                                ? "bg-[#34a853]/15 text-[#34a853] border-[#34a853]/40 shadow-[0_0_12px_rgba(52,168,83,0.1)]"
-                                : "bg-transparent text-[#8e918f] border-transparent hover:border-white/10 hover:text-white"
-                            )}
-                            title="Thumbs up (Good response)"
-                          >
-                            <ThumbsUp size={12} className={msg.reaction === 'thumbs_up' ? "fill-[#34a853]/10 animate-pulse" : ""} />
-                            {msg.reaction === 'thumbs_up' && <span className="text-[10px] scale-90 font-bold">1</span>}
-                          </motion.button>
-                          
-                          <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-                            onClick={() => handleToggleReaction(msg.id, 'thumbs_down')}
-                            className={cn(
-                              "flex items-center gap-1.5 px-2 py-1 rounded-full border text-xs font-medium transition-all duration-200 cursor-pointer",
-                              msg.reaction === 'thumbs_down'
-                                ? "bg-[#ea4335]/15 text-[#ea4335] border-[#ea4335]/40 shadow-[0_0_12px_rgba(234,67,53,0.1)]"
-                                : "bg-transparent text-[#8e918f] border-transparent hover:border-white/10 hover:text-white"
-                            )}
-                            title="Thumbs down (Poor response)"
-                          >
-                            <ThumbsDown size={12} className={msg.reaction === 'thumbs_down' ? "fill-[#ea4335]/10 animate-pulse text-[#ea4335]" : ""} />
-                            {msg.reaction === 'thumbs_down' && <span className="text-[10px] scale-90 font-bold">1</span>}
-                          </motion.button>
-
-                          <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-                            onClick={() => handleToggleReaction(msg.id, 'heart')}
-                            className={cn(
-                              "flex items-center gap-1.5 px-2 py-1 rounded-full border text-xs font-medium transition-all duration-200 cursor-pointer",
-                              msg.reaction === 'heart'
-                                ? "bg-[#fc2f70]/15 text-[#fc2f70] border-[#fc2f70]/40 shadow-[0_0_12px_rgba(252,47,112,0.1)]"
-                                : "bg-transparent text-[#8e918f] border-transparent hover:border-white/10 hover:text-white"
-                            )}
-                            title="Love it"
-                          >
-                            <Heart size={12} className={msg.reaction === 'heart' ? "fill-[#fc2f70]/25 animate-pulse text-[#fc2f70]" : ""} />
-                            {msg.reaction === 'heart' && <span className="text-[10px] scale-90 font-bold">1</span>}
-                          </motion.button>
-                        </div>
-                      )}
                       
                       {/* Message Actions */}
                       <div className={cn(
@@ -2349,14 +2331,6 @@ export default function App() {
                           <FileText size={14} className="text-[#4285f4]" />
                           <span>Summarize Chat</span>
                         </motion.button>
-                        <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => { setIsDriveModalOpen(true); setIsPlusMenuOpen(false); }} className="w-full flex items-center gap-3 p-2 hover:bg-white/5 rounded-lg text-xs transition-colors">
-                          <Cloud size={14} className="text-[#4285f4]" />
-                          <span>Google Drive</span>
-                        </motion.button>
-                        <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => { setIsCalendarModalOpen(true); setIsPlusMenuOpen(false); }} className="w-full flex items-center gap-3 p-2 hover:bg-white/5 rounded-lg text-xs transition-colors">
-                          <CalendarIcon size={14} className="text-[#34a853]" />
-                          <span>Google Calendar</span>
-                        </motion.button>
                         <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => { fileInputRef.current?.click(); setIsPlusMenuOpen(false); }} className="w-full flex items-center gap-3 p-2 hover:bg-white/5 rounded-lg text-xs transition-colors">
                           <Paperclip size={14} className="text-[#8e918f]" />
                           <span>Upload file</span>
@@ -2372,7 +2346,7 @@ export default function App() {
               </div>
 
               <input 
-                type="text"
+                type="text" 
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
@@ -2405,14 +2379,6 @@ export default function App() {
                           <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => { handleAction('Deep Research'); setIsToolsMenuOpen(false); }} className="w-full flex items-center gap-3 p-2 hover:bg-white/5 rounded-lg text-xs transition-colors">
                             <Search size={14} className="text-[#4285f4]" />
                             <span>Deep Research</span>
-                          </motion.button>
-                          <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => { handleAction('Canvas'); setIsToolsMenuOpen(false); }} className="w-full flex items-center gap-3 p-2 hover:bg-white/5 rounded-lg text-xs transition-colors">
-                            <PenTool size={14} className="text-[#34a853]" />
-                            <span>Canvas</span>
-                          </motion.button>
-                          <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => { handleAction('Guided Learning'); setIsToolsMenuOpen(false); }} className="w-full flex items-center gap-3 p-2 hover:bg-white/5 rounded-lg text-xs transition-colors">
-                            <GraduationCap size={14} className="text-[#ea4335]" />
-                            <span>Guided Learning</span>
                           </motion.button>
                           <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => { handleAction('NotebookLM'); setIsToolsMenuOpen(false); }} className="w-full flex items-center gap-3 p-2 hover:bg-white/5 rounded-lg text-xs transition-colors">
                             <BookOpen size={14} className="text-[#9b72cb]" />
@@ -2639,9 +2605,9 @@ export default function App() {
                     <div className="space-y-3">
                       <label className="text-sm font-bold text-[#8e918f] uppercase tracking-widest">Genre</label>
                       <div className="grid grid-cols-2 gap-2">
-                        {['Lo-fi', 'Ambient', 'Cinematic', 'Techno', 'Jazz', 'Rock'].map(g => (
+                        {['Lo-fi', 'Ambient', 'Cinematic', 'Techno', 'Jazz', 'Rock'].map((g, gIdx) => (
                           <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} 
-                            key={g} 
+                            key={`app-music-genre-${g}-${gIdx}`} 
                             onClick={() => setSelectedGenre(g)}
                             className={cn(
                               "p-3 rounded-xl border text-sm font-medium transition-all",
@@ -2663,8 +2629,8 @@ export default function App() {
                           onChange={(e) => setSelectedMood(e.target.value)}
                           className="glass-input w-full p-3 rounded-xl border border-white/10 bg-black/20 text-[#e3e3e3] focus:ring-2 focus:ring-[#34a853]/50 transition-all appearance-none"
                         >
-                          {['Relaxing', 'Energetic', 'Dark', 'Happy', 'Epic', 'Melancholic', 'Romantic', 'Scary', 'Upbeat', 'Chill', 'Dreamy', 'Aggressive'].map(m => (
-                            <option key={m} value={m} className="bg-gray-900 text-white">
+                          {['Relaxing', 'Energetic', 'Dark', 'Happy', 'Epic', 'Melancholic', 'Romantic', 'Scary', 'Upbeat', 'Chill', 'Dreamy', 'Aggressive'].map((m, mIdx) => (
+                            <option key={`app-music-mood-${m}-${mIdx}`} value={m} className="bg-gray-900 text-white">
                               {m}
                             </option>
                           ))}
@@ -2765,9 +2731,9 @@ export default function App() {
                   <div className="space-y-3">
                     <label className="text-sm font-medium text-[#c4c7c5] uppercase tracking-wider">Select Voice</label>
                     <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 max-h-48 overflow-y-auto custom-scrollbar pr-2">
-                      {creatorVoices.map(voice => (
+                      {creatorVoices.map((voice, vIdx) => (
                         <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-                          key={voice.id}
+                          key={`app-tts-voice-${voice.id || vIdx}`}
                           onClick={() => setTtsVoice(voice.id)}
                           className={cn(
                             "flex items-center gap-3 p-3 rounded-2xl border transition-all text-left",
@@ -2963,7 +2929,7 @@ export default function App() {
                     <div className="grid grid-cols-2 gap-3">
                       {['Photorealistic', 'Digital Art', 'Anime', '3D Render', 'Oil Painting', 'Sketch'].map((s, index) => (
                         <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} 
-                          key={`${s}-${index}`} 
+                          key={`app-photo-style-${s}-${index}`} 
                           onClick={() => setSelectedStyle(s)}
                           className={cn(
                             "p-3 rounded-xl border text-sm font-medium transition-all text-left flex items-center gap-2",
@@ -2995,7 +2961,7 @@ export default function App() {
                         { id: '9:16', icon: <div className="w-4 h-8 border-2 rounded-sm border-current" /> }
                       ].map((r, index) => (
                         <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} 
-                          key={`${r.id}-${index}`} 
+                          key={`app-photo-ratio-${r.id}-${index}`} 
                           onClick={() => setSelectedAspectRatio(r.id as any)}
                           className={cn(
                             "p-4 rounded-xl border text-sm font-medium transition-all flex flex-col items-center justify-center gap-3",

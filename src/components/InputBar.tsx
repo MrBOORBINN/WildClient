@@ -65,7 +65,7 @@ const InputBar = ({
                       <motion.div 
                         initial={{ scale: 0.8, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
-                        key={idx} 
+                        key={`input-att-${att.id || att.name || idx}-${idx}`} 
                         className="group/att flex items-center gap-2 px-3 py-1.5 bg-white/5 rounded-xl border border-white/10 text-[11px] text-[#c4c7c5] hover:bg-white/10 transition-colors"
                       >
                         <div className="w-5 h-5 rounded-md bg-white/5 flex items-center justify-center">
@@ -111,15 +111,6 @@ const InputBar = ({
                               <div className="text-left">
                                 <div className="font-bold text-white/90">Summarize</div>
                                 <div className="text-[10px] text-[#8e918f]">Get a quick recap</div>
-                              </div>
-                            </button>
-                            <button onClick={() => { setIsDriveModalOpen(true); setIsPlusMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 hover:bg-white/5 rounded-2xl text-xs transition-all group/item">
-                              <div className="w-10 h-10 rounded-xl bg-green-500/10 flex items-center justify-center group-hover/item:scale-110 transition-transform">
-                                <Cloud size={18} className="text-[#34a853]" />
-                              </div>
-                              <div className="text-left">
-                                <div className="font-bold text-white/90">Google Drive</div>
-                                <div className="text-[10px] text-[#8e918f]">Access cloud files</div>
                               </div>
                             </button>
                             <button onClick={() => { fileInputRef.current?.click(); setIsPlusMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 hover:bg-white/5 rounded-2xl text-xs transition-all group/item">
@@ -197,24 +188,6 @@ const InputBar = ({
                                 <div className="text-left">
                                   <div className="font-bold text-white/90">Text to Speech</div>
                                   <div className="text-[10px] text-[#8e918f]">Convert text to audio</div>
-                                </div>
-                              </button>
-                              <button onClick={() => { handleAction('Canvas'); setIsToolsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 hover:bg-white/5 rounded-2xl text-xs transition-all group/item">
-                                <div className="w-10 h-10 rounded-xl bg-orange-500/10 flex items-center justify-center group-hover/item:scale-110 transition-transform">
-                                  <PenTool size={18} className="text-[#ff4e00]" />
-                                </div>
-                                <div className="text-left">
-                                  <div className="font-bold text-white/90">Canvas</div>
-                                  <div className="text-[10px] text-[#8e918f]">Collaborative workspace</div>
-                                </div>
-                              </button>
-                              <button onClick={() => { handleAction('Guided Learning'); setIsToolsMenuOpen(false); }} className="w-full flex items-center gap-4 p-3 hover:bg-white/5 rounded-2xl text-xs transition-all group/item">
-                                <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center group-hover/item:scale-110 transition-transform">
-                                  <GraduationCap size={18} className="text-[#ea4335]" />
-                                </div>
-                                <div className="text-left">
-                                  <div className="font-bold text-white/90">Guided Learning</div>
-                                  <div className="text-[10px] text-[#8e918f]">Step-by-step tutor</div>
                                 </div>
                               </button>
                             </div>

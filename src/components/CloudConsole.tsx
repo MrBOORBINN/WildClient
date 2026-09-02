@@ -135,8 +135,8 @@ const CloudConsole: React.FC<CloudConsoleProps> = ({ isOpen, onClose }) => {
                   <p>Initializing cloud stream...</p>
                 </div>
               )}
-              {logs.map(log => (
-                <div key={log.id} className="flex gap-3 animate-in fade-in slide-in-from-left-2 duration-300">
+              {logs.map((log, lIdx) => (
+                <div key={log.id ? `cloud-log-${log.id}` : `cloud-log-idx-${lIdx}`} className="flex gap-3 animate-in fade-in slide-in-from-left-2 duration-300">
                   <span className="text-white/20 shrink-0">[{log.timestamp}]</span>
                   <span className={cn(
                     "font-bold shrink-0 w-16",

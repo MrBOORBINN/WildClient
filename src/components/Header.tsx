@@ -82,9 +82,13 @@ const Header = ({
         </button>
         <button 
           onClick={() => setIsProfileModalOpen(true)}
-          className="w-7 h-7 rounded-full bg-gradient-to-br from-[#ff4e00] to-[#ff0080] flex items-center justify-center text-[10px] font-bold shadow-lg hover:scale-105 transition-transform"
+          className="w-7 h-7 rounded-full bg-gradient-to-br from-[#ff4e00] to-[#ff0080] flex items-center justify-center text-[10px] font-bold shadow-lg hover:scale-105 transition-transform overflow-hidden shrink-0"
         >
-          {profileData.avatar}
+          {profileData?.avatarUrl ? (
+            <img src={profileData.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+          ) : (
+            profileData?.avatar || 'U'
+          )}
         </button>
       </div>
     </header>
