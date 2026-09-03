@@ -1,7 +1,7 @@
 import React, { useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  Paperclip, 
+  Upload, 
   ArrowUp, 
   X, 
   FileText, 
@@ -9,8 +9,6 @@ import {
   Code, 
   Highlighter, 
   Sparkles, 
-  SlidersHorizontal,
-  Mic,
   FileCode,
   Image as ImageIcon,
   Check
@@ -146,7 +144,7 @@ const InputBar: React.FC<InputBarProps> = ({
               className="p-2 hover:bg-white/5 rounded-full transition-colors text-[#8e918f] hover:text-white"
               title="Attach Images, PDFs, DOCX, CSV, JSON, or Code files"
             >
-              <Paperclip size={18} />
+              <Upload size={18} />
             </button>
           </div>
 
@@ -179,74 +177,6 @@ const InputBar: React.FC<InputBarProps> = ({
           />
 
           <div className="flex items-center gap-1">
-            {/* Tools Menu Button */}
-            <div className="relative">
-              <button 
-                onClick={() => setIsToolsMenuOpen(!isToolsMenuOpen)}
-                className="p-2 hover:bg-white/5 rounded-full transition-colors text-[#8e918f] hover:text-white"
-                title="AI Tools & Shortcuts"
-              >
-                <SlidersHorizontal size={18} />
-              </button>
-              <AnimatePresence>
-                {isToolsMenuOpen && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setIsToolsMenuOpen(false)} />
-                    <motion.div 
-                      initial={{ opacity: 0, y: -10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
-                      className="absolute bottom-full right-0 mb-2 w-52 glass-card p-2 rounded-xl border border-white/10 z-50 shadow-2xl bg-[#1e1f20]"
-                    >
-                      <button 
-                        onClick={() => { setIsNotebookOpen(true); setIsToolsMenuOpen(false); }} 
-                        className="w-full flex items-center gap-3 p-2 hover:bg-white/5 rounded-lg text-xs transition-colors text-white"
-                      >
-                        <Highlighter size={14} className="text-[#fbbc04]" />
-                        <span>Personal Notebook</span>
-                      </button>
-                      <button 
-                        onClick={() => { handleAction('Deep Research'); setIsToolsMenuOpen(false); }} 
-                        className="w-full flex items-center gap-3 p-2 hover:bg-white/5 rounded-lg text-xs transition-colors text-white"
-                      >
-                        <Search size={14} className="text-[#4285f4]" />
-                        <span>Web Research</span>
-                      </button>
-                      <button 
-                        onClick={() => { handleAction('Code & Game Dev'); setIsToolsMenuOpen(false); }} 
-                        className="w-full flex items-center gap-3 p-2 hover:bg-white/5 rounded-lg text-xs transition-colors text-white"
-                      >
-                        <Code size={14} className="text-[#34a853]" />
-                        <span>Code & Game Studio</span>
-                      </button>
-                      <button 
-                        onClick={() => { handleSummarizeChat(); setIsToolsMenuOpen(false); }} 
-                        className="w-full flex items-center gap-3 p-2 hover:bg-white/5 rounded-lg text-xs transition-colors border-t border-white/5 mt-1 pt-2 text-white"
-                      >
-                        <FileText size={14} className="text-[#ff4e00]" />
-                        <span>Summarize Chat</span>
-                      </button>
-                    </motion.div>
-                  </>
-                )}
-              </AnimatePresence>
-            </div>
-
-            {/* Voice Toggle */}
-            <button 
-              onClick={() => setIsVoiceEnabled(!isVoiceEnabled)}
-              className={cn(
-                "p-2 rounded-full transition-colors relative",
-                isVoiceEnabled ? "text-[#4285f4] bg-blue-500/10" : "text-[#8e918f] hover:bg-white/5 hover:text-white"
-              )}
-              title={isVoiceEnabled ? "Voice Speech Response is Enabled" : "Click to enable Voice Response"}
-            >
-              <Mic size={18} />
-              {isVoiceEnabled && (
-                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-[#4285f4] rounded-full animate-ping" />
-              )}
-            </button>
-
             {/* Send Button */}
             <button 
               onClick={() => handleSend()}

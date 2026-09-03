@@ -92,55 +92,6 @@ const Header: React.FC<HeaderProps> = ({
       </div>
 
       <div className="flex items-center gap-1.5 sm:gap-2.5">
-        {/* PDF Export Button */}
-        <button
-          onClick={handleExportPDF}
-          disabled={messages.length === 0}
-          className={cn(
-            "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border",
-            messages.length > 0 
-              ? "bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border-blue-500/30 hover:scale-[1.02] shadow-sm cursor-pointer" 
-              : "bg-white/5 text-[#8e918f] border-transparent cursor-not-allowed opacity-50"
-          )}
-          title="Download conversation history as PDF"
-        >
-          <Download size={13} className="text-blue-400" />
-          <span className="hidden sm:inline">Export PDF</span>
-        </button>
-
-        {/* Summarize Conversation Button */}
-        <button 
-          onClick={handleSummarizeChat}
-          disabled={isSummarizing || messages.length === 0}
-          className={cn(
-            "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all",
-            isSummarizing 
-              ? "bg-white/5 text-[#8e918f] cursor-not-allowed" 
-              : "bg-white/5 text-[#c4c7c5] hover:bg-white/10 hover:text-white"
-          )}
-          title="Summarize entire conversation"
-        >
-          <FileText size={13} className={isSummarizing ? "animate-pulse text-amber-400" : ""} />
-          <span className="hidden md:inline">{isSummarizing ? 'Summarizing...' : 'Summarize'}</span>
-        </button>
-
-        {/* Personal Notebook Button */}
-        {onOpenNotebook && (
-          <button 
-            onClick={onOpenNotebook}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/20 text-xs transition-all"
-            title="Open Personal Notebook"
-          >
-            <Highlighter size={13} className="text-amber-400" />
-            <span className="hidden lg:inline font-medium">Notebook</span>
-            {notebookCount > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full bg-amber-400/20 text-[10px] font-bold text-amber-300">
-                {notebookCount}
-              </span>
-            )}
-          </button>
-        )}
-
         {/* Profile Avatar Button */}
         <button 
           onClick={() => setIsProfileModalOpen(true)}

@@ -718,54 +718,6 @@ export function App() {
                     नमस्ते! मैं आपकी कैसे मदद कर सकता हूँ? (Hindi & Hinglish supported)
                   </p>
                 </div>
-
-                {/* Quick starter cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-2xl">
-                  {[
-                    { 
-                      label: 'Live Web Research', 
-                      desc: 'Fact-checked search with citations',
-                      icon: <Search size={18} className="text-[#4285f4]" />, 
-                      color: 'bg-blue-500/10 border-blue-500/20',
-                      action: () => handleAction('Deep Research') 
-                    },
-                    { 
-                      label: 'Code & Game Studio', 
-                      desc: 'Generate & test playable 2D games',
-                      icon: <Code size={18} className="text-[#34a853]" />, 
-                      color: 'bg-green-500/10 border-green-500/20',
-                      action: () => handleAction('Code & Game Dev') 
-                    },
-                    { 
-                      label: 'Vision & Documents', 
-                      desc: 'Analyze PDFs, DOCX, CSV, and images',
-                      icon: <FileText size={18} className="text-[#ea4335]" />, 
-                      color: 'bg-red-500/10 border-red-500/20',
-                      action: () => handleAction('Analyze Document') 
-                    },
-                    { 
-                      label: 'Personal Notebook', 
-                      desc: 'Save and organize key takeaways',
-                      icon: <Highlighter size={18} className="text-[#fbbc04]" />, 
-                      color: 'bg-amber-500/10 border-amber-500/20',
-                      action: () => setIsNotebookOpen(true) 
-                    }
-                  ].map((card, idx) => (
-                    <button 
-                      key={`hero-card-${idx}`}
-                      onClick={card.action}
-                      className="flex items-start gap-3 p-4 rounded-2xl bg-white/[0.03] border border-white/5 hover:bg-white/[0.07] transition-all text-left group hover:scale-[1.01]"
-                    >
-                      <div className={cn("p-2.5 rounded-xl border shrink-0", card.color)}>
-                        {card.icon}
-                      </div>
-                      <div>
-                        <div className="text-xs font-bold text-white group-hover:text-blue-400 transition-colors">{card.label}</div>
-                        <div className="text-[11px] text-[#8e918f] mt-0.5">{card.desc}</div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
               </div>
             ) : (
               <div className="space-y-6">
