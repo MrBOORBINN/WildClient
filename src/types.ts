@@ -8,17 +8,23 @@ export interface User {
 }
 
 export interface Session {
-  id: number;
+  id: string | number;
   title: string;
   created_at: string;
-  user_id: number;
+  user_id: number | string;
 }
 
 export interface Attachment {
-  type: 'image' | 'document';
+  type: 'image' | 'document' | 'file';
   data: string;
   mimeType?: string;
   name: string;
+}
+
+export interface GroundingSource {
+  title?: string;
+  url?: string;
+  snippet?: string;
 }
 
 export interface Message {
@@ -27,6 +33,23 @@ export interface Message {
   content: string;
   timestamp: number;
   attachments?: Attachment[];
+  sources?: GroundingSource[];
+  reaction?: 'thumbs_up' | 'thumbs_down' | 'heart' | null;
+}
+
+export type SnippetColor = 'amber' | 'emerald' | 'sky' | 'purple' | 'rose';
+
+export interface NotebookSnippet {
+  id: string;
+  userId: string;
+  text: string;
+  note?: string;
+  color?: SnippetColor;
+  tag?: string;
+  messageId?: string;
+  sessionId?: string;
+  sessionTitle?: string;
+  createdAt: number;
 }
 
 export type GameDevTask = 'brainstorm' | 'code' | 'debug' | 'level' | 'asset' | 'math' | 'planning' | 'marketing' | 'video' | 'map3d' | 'platform2d';

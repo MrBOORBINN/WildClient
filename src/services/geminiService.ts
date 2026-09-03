@@ -1,29 +1,34 @@
 import { GoogleGenAI } from "@google/genai";
+import { Attachment, GroundingSource } from "../types";
 
-export interface Attachment {
-  type: 'image' | 'document' | 'file';
-  data: string; // base64 for images, text content for documents, URL for files
-  mimeType?: string;
-  name: string;
-}
+export type ModelType = 'fast' | 'pro' | 'thinking' | 'chill';
 
-export type ModelType = 'chill' | 'thinking' | 'pro' | 'fast';
+const INFBOTT_SYSTEM_INSTRUCTION = `You are INFBOTT, a real, production-ready, intelligent, capable, and reliable AI assistant.
+You fluently understand and speak English, Hindi, and Hinglish naturally.
+You provide clear, accurate, and structured responses.
+You use 1 to 6 relevant emojis per response with natural variation.
+You generate fully functional code for software and games, perform deep web research, and deeply analyze documents, PDFs, and images.`;
 
-const SYSTEM_INSTRUCTION = `You are a powerful, highly capable, and extremely fast AI assistant.
-Your goal is to provide clear, accurate, and helpful responses to the user's queries.
-You are fluent in both English and Hindi. If the user speaks Hindi, respond in Hindi or a mix of both as appropriate.
-IMPORTANT: You CANNOT generate photos, images, music, or audio. Politely explain that this feature is unavailable.
-Keep your responses VERY concise, short, and easy to read. Use bullet points and bold text for clarity.
-Be polite, professional, and innovative in your responses.`;
-
-function cleanErrorMessage(status: number, rawText: string): string {
-  if (rawText.includes('<!DOCTYPE') || rawText.includes('<html') || rawText.includes('Page not found')) {
-    if (status === 404) {
-      return "Backend endpoint /api/chat not found (404). If running as a static export or on Netlify, please verify that Netlify serverless functions or backend proxy is enabled.";
+export async function generateChatTitle(prompt: string): Promise<string> {
+  try {
+    const res = await fetch('/api/title', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: prompt })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.title && data.title !== 'New Conversation') {
+        return data.title;
+      }
     }
-    return `Server returned HTTP ${status} (HTML response). Please check your server or network connection.`;
+  } catch (e) {
+    console.warn("Failed to generate title via API:", e);
   }
-  return rawText.slice(0, 300);
+
+  // Fallback heuristic
+  const words = prompt.trim().split(/\s+/).slice(0, 5).join(' ');
+  return words.length > 30 ? words.slice(0, 30) + '...' : words || 'New Conversation';
 }
 
 async function* clientSideFallbackStream(
@@ -37,7 +42,7 @@ async function* clientSideFallbackStream(
                  (typeof window !== 'undefined' && (window as any).aistudio?.apiKey);
 
   if (!apiKey) {
-    throw new Error("Chat backend returned 404 and no client-side Gemini API key is configured. Please ensure your backend is running or configure GEMINI_API_KEY.");
+    throw new Error("Chat backend endpoint unavailable and no client API key found. Please ensure INFBOTT server is running.");
   }
 
   const ai = new GoogleGenAI({ 
@@ -63,8 +68,9 @@ async function* clientSideFallbackStream(
     model: "gemini-2.5-flash",
     history: geminiHistory,
     config: {
-      systemInstruction: SYSTEM_INSTRUCTION,
+      systemInstruction: INFBOTT_SYSTEM_INSTRUCTION,
       temperature: 0.7,
+      tools: [{ googleSearch: {} }]
     },
   });
 
@@ -82,7 +88,7 @@ async function* clientSideFallbackStream(
             inlineData: { mimeType, data: base64Data }
           });
         }
-      } else if (att.type === 'document' || att.type === 'file') {
+      } else if (att.type === 'document' || (att as any).type === 'file') {
         if (mimeType === 'application/pdf') {
           const base64Data = dataToUse.includes(',') ? dataToUse.split(',')[1] : dataToUse;
           if (base64Data && !base64Data.startsWith('http')) {
@@ -92,7 +98,7 @@ async function* clientSideFallbackStream(
           }
         } else {
           parts.push({
-            text: `\n\n[Attached Document: ${att.name}]\n${dataToUse}\n[End of Document]`
+            text: `\n\n--- [Attached Document: ${att.name}] ---\n${dataToUse}\n--- [End of Document] ---\n`
           });
         }
       }
@@ -100,7 +106,7 @@ async function* clientSideFallbackStream(
   }
 
   if (parts.length === 0) {
-    parts.push({ text: "..." });
+    parts.push({ text: "Hello!" });
   }
 
   const streamResponse = await chat.sendMessageStream({ message: parts });
@@ -114,17 +120,16 @@ async function* clientSideFallbackStream(
 export async function* getChatResponseStream(
   message: string, 
   history: { role: 'user' | 'assistant', content: string }[],
-  modelType: ModelType = 'chill',
+  modelType: ModelType = 'fast',
   attachments: Attachment[] = [],
-  temperature: number = 0.7
+  temperature: number = 0.7,
+  enableSearch: boolean = true
 ) {
   function safeStringify(obj: any) {
     const cache = new Set();
     return JSON.stringify(obj, (key, value) => {
       if (typeof value === 'object' && value !== null) {
-        if (cache.has(value)) {
-          return;
-        }
+        if (cache.has(value)) return;
         cache.add(value);
       }
       return value;
@@ -132,8 +137,6 @@ export async function* getChatResponseStream(
   }
 
   let useClientFallback = false;
-  let serverErrorStatus = 0;
-  let serverErrorText = '';
 
   try {
     const response = await fetch('/api/chat', {
@@ -146,18 +149,17 @@ export async function* getChatResponseStream(
         previousMessages: history,
         modelType,
         attachments,
-        temperature
+        temperature,
+        enableSearch
       })
     });
 
     if (!response.ok) {
-      serverErrorStatus = response.status;
-      serverErrorText = await response.text();
-      // If 404 or HTML error, try client fallback
+      const serverErrorText = await response.text();
       if (response.status === 404 || serverErrorText.includes('<!DOCTYPE') || serverErrorText.includes('<html')) {
         useClientFallback = true;
       } else {
-        throw new Error(`Server returned ${response.status}: ${cleanErrorMessage(response.status, serverErrorText)}`);
+        throw new Error(`INFBOTT Server Error (${response.status}): ${serverErrorText.slice(0, 300)}`);
       }
     } else {
       const reader = response.body?.getReader();
@@ -197,43 +199,23 @@ export async function* getChatResponseStream(
       }
     }
   } catch (error: any) {
-    if (error?.message && !error.message.includes('404') && !error.message.includes('Failed to fetch') && !error.message.includes('NetworkError')) {
-      // Check if it was explicitly thrown as a standard server error
-      if (!useClientFallback) {
-        throw error;
-      }
+    if (!useClientFallback && error?.message && !error.message.includes('404') && !error.message.includes('Failed to fetch')) {
+      throw error;
     }
     useClientFallback = true;
   }
 
   if (useClientFallback) {
-    try {
-      yield* clientSideFallbackStream(message, history, attachments);
-    } catch (fallbackError: any) {
-      if (serverErrorStatus === 404 || serverErrorText.includes('Page not found') || serverErrorText.includes('<!DOCTYPE')) {
-        throw new Error(cleanErrorMessage(404, serverErrorText));
-      }
-      throw fallbackError;
-    }
+    yield* clientSideFallbackStream(message, history, attachments);
   }
 }
 
-// Stubs for removed features
-export async function generateImage(prompt: string, aspectRatio: string = "1:1", style?: string): Promise<string> {
-  throw new Error("Image generating features are removed.");
-}
-export async function generateMusic(prompt: string, genre: string, mood: string): Promise<string> {
-  throw new Error("Music generating features are removed.");
-}
-export async function generateAudio(text: string, voiceName?: string, temperature?: number): Promise<string> {
-  throw new Error("Audio generating features are removed.");
-}
-export async function transcribeAudio(base64Audio: string, mimeType?: string): Promise<string> {
-  throw new Error("Audio generating features are removed.");
-}
 export async function summarizeContent(content: string): Promise<string> {
   try {
-    const stream = getChatResponseStream(`Please provide a concise, well-structured bullet-point summary of the following conversation with key points and action items:\n\n${content}`, []);
+    const stream = getChatResponseStream(
+      `Please provide a clean, high-impact bulleted summary of the following conversation, highlighting key insights, decisions, and actionable next steps:\n\n${content}`,
+      []
+    );
     let result = '';
     for await (const chunk of stream) {
       if (chunk.type === 'text' && chunk.content) {

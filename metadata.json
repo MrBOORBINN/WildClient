@@ -1,6 +1,6 @@
 {
-  "name": "WILDCLEINT",
-  "description": "A powerful and creative AI assistant named WILDCLEINT.",
+  "name": "INFBOTT",
+  "description": "A powerful, real, production-ready AI assistant named INFBOTT with web research, vision, file understanding, and advanced code & game development capabilities.",
   "requestFramePermissions": [
     "camera",
     "microphone",

@@ -6,15 +6,10 @@ import LiquidBackground from './LiquidBackground';
 const AuthScreen = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [appIcon, setAppIcon] = useState<string | null>(null);
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [devKey, setDevKey] = useState('');
-
-  useEffect(() => {
-    setAppIcon('https://picsum.photos/seed/wildcleint/200/200');
-  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,14 +51,10 @@ const AuthScreen = () => {
       >
         <div className="flex flex-col items-center mb-10 text-center">
           <div className="w-20 h-20 rounded-[28px] bg-gradient-to-br from-[#4285f4] to-[#9b72cb] flex items-center justify-center mb-6 shadow-2xl overflow-hidden border border-white/10">
-            {appIcon ? (
-              <img src={appIcon} alt="WILDCLEINT Icon" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-            ) : (
-              <Sparkles size={40} className="text-white animate-pulse" />
-            )}
+            <Sparkles size={40} className="text-white animate-pulse" />
           </div>
-          <h1 className="text-4xl font-black tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-white to-white/60 mb-2">WILDSTAR</h1>
-          <p className="text-[#8e918f] max-w-[280px] leading-relaxed text-sm">Your persistent AI companion.</p>
+          <h1 className="text-4xl font-black tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-white to-white/60 mb-2">INFBOTT</h1>
+          <p className="text-[#8e918f] max-w-[280px] leading-relaxed text-sm">Your intelligent, production-ready AI companion.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -72,7 +63,7 @@ const AuthScreen = () => {
               <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8e918f]" size={18} />
               <input
                 type="email"
-                placeholder="Email (@wildland.in)"
+                placeholder="Email address"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-white focus:outline-none focus:ring-2 focus:ring-[#4285f4]/50 transition-all"
@@ -107,7 +98,7 @@ const AuthScreen = () => {
           <button
             type="submit"
             disabled={loading}
-            className="w-full flex items-center justify-center gap-3 bg-[#4285f4] text-white font-bold py-4 px-6 rounded-2xl hover:bg-[#4285f4]/80 transition-all active:scale-[0.98] disabled:opacity-50"
+            className="w-full flex items-center justify-center gap-3 bg-[#4285f4] text-white font-bold py-4 px-6 rounded-2xl hover:bg-[#4285f4]/80 transition-all active:scale-[0.98] disabled:opacity-50 cursor-pointer"
           >
             {loading ? (
               <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -136,7 +127,7 @@ const AuthScreen = () => {
         </div>
 
         <p className="mt-10 text-[10px] text-[#8e918f] leading-relaxed text-center opacity-50">
-          By continuing, you agree to WILDSTAR's Terms of Service and Privacy Policy.
+          By continuing, you agree to INFBOTT's Terms of Service and Privacy Policy.
         </p>
       </motion.div>
     </div>

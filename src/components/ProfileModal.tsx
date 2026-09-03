@@ -1,81 +1,100 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Mic, Volume2, Clock, AlertCircle } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { X, User, Cloud, LogOut, Check, Sparkles } from 'lucide-react';
 
-const ProfileModal = ({ 
+interface ProfileModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  user: any;
+  profileData: {
+    fullName: string;
+    email: string;
+    avatar: string;
+    avatarUrl?: string;
+  };
+  setProfileData: React.Dispatch<React.SetStateAction<any>>;
+  onSignOut: () => void;
+  onOpenCloudConsole: () => void;
+}
+
+const ProfileModal: React.FC<ProfileModalProps> = ({ 
   isOpen, 
   onClose, 
+  user,
   profileData, 
   setProfileData, 
-  onSave, 
-  onLogout,
-  avatarInputRef,
-  handleAvatarUpload,
-  selectedVoice,
-  setSelectedVoice,
-  voiceVolume,
-  setVoiceVolume,
-  voiceDelay,
-  setVoiceDelay
-}: { 
-  isOpen: boolean; 
-  onClose: () => void; 
-  profileData: any; 
-  setProfileData: (data: any) => void;
-  onSave: () => void;
-  onLogout: () => void;
-  avatarInputRef: React.RefObject<HTMLInputElement | null>;
-  handleAvatarUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  selectedVoice: string;
-  setSelectedVoice: (v: any) => void;
-  voiceVolume: number;
-  setVoiceVolume: (v: number) => void;
-  voiceDelay: number;
-  setVoiceDelay: (v: number) => void;
+  onSignOut,
+  onOpenCloudConsole
 }) => {
-  const [errors, setErrors] = useState<{ volume?: string; delay?: string }>({});
+  const [name, setName] = useState(profileData.fullName || '');
+  const [saved, setSaved] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    const newErrors: { volume?: string; delay?: string } = {};
-    if (voiceVolume < 0 || voiceVolume > 1) {
-      newErrors.volume = 'Volume must be between 0 and 100%';
+  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setProfileData((prev: any) => ({
+          ...prev,
+          avatarUrl: reader.result as string
+        }));
+      };
+      reader.readAsDataURL(file);
     }
-    if (voiceDelay < 0 || voiceDelay > 3) {
-      newErrors.delay = 'Delay must be between 0 and 3 seconds';
-    }
-    setErrors(newErrors);
-  }, [voiceVolume, voiceDelay]);
+  };
 
-  const hasErrors = Object.keys(errors).length > 0;
+  const handleSave = () => {
+    const trimmed = name.trim();
+    if (trimmed) {
+      setProfileData((prev: any) => ({
+        ...prev,
+        fullName: trimmed,
+        avatar: trimmed[0]?.toUpperCase() || 'I'
+      }));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    }
+  };
 
   return (
     <AnimatePresence>
       {isOpen && (
-        <motion.div 
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
-        >
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+          />
           <motion.div 
             initial={{ scale: 0.95, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.95, opacity: 0, y: 20 }}
-            className="relative w-full max-w-md glass-card p-10 rounded-[40px] border border-white/10"
+            className="relative w-full max-w-md glass-card p-8 rounded-[32px] border border-white/10"
           >
-            <button onClick={onClose} className="absolute top-6 right-6 p-2 hover:bg-white/10 rounded-full transition-colors">
-              <X size={24} />
+            <button 
+              onClick={onClose} 
+              className="absolute top-6 right-6 p-2 hover:bg-white/10 rounded-full transition-colors text-[#8e918f] hover:text-white"
+            >
+              <X size={20} />
             </button>
-            <h2 className="text-3xl font-bold mb-8">Profile Settings</h2>
+
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2.5 bg-[#4285f4]/20 rounded-xl">
+                <Sparkles size={20} className="text-[#4285f4]" />
+              </div>
+              <h2 className="text-2xl font-bold text-white">INFBOTT Account</h2>
+            </div>
             
             <div className="space-y-6">
-              <div className="flex flex-col items-center gap-4 mb-8">
-                <div className="w-24 h-24 rounded-full bg-gradient-to-br from-[#ff4e00] to-[#ff0080] flex items-center justify-center text-3xl font-bold shadow-2xl overflow-hidden">
+              <div className="flex flex-col items-center gap-3">
+                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#ff4e00] to-[#ff0080] flex items-center justify-center text-2xl font-bold shadow-xl overflow-hidden text-white border border-white/20">
                   {profileData.avatarUrl ? (
                     <img src={profileData.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
                   ) : (
-                    profileData.avatar
+                    profileData.avatar || 'I'
                   )}
                 </div>
                 <input 
@@ -87,132 +106,71 @@ const ProfileModal = ({
                 />
                 <button 
                   onClick={() => avatarInputRef.current?.click()}
-                  className="text-sm text-[#ff4e00] font-bold hover:underline"
+                  className="text-xs text-[#4285f4] font-semibold hover:underline cursor-pointer"
                 >
-                  Change Avatar
+                  Change Profile Image
                 </button>
               </div>
 
               <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-bold text-[#8e918f] ml-1">Full Name</label>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-[#8e918f] uppercase tracking-wider">Display Name</label>
                   <input 
                     type="text" 
-                    value={profileData.fullName}
-                    onChange={(e) => setProfileData((prev: any) => ({ ...prev, fullName: e.target.value }))}
-                    className="glass-input w-full"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#4285f4]"
                     placeholder="Enter your name"
                   />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-bold text-[#8e918f] ml-1">Email Address</label>
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-[#8e918f] uppercase tracking-wider">Email Address</label>
                   <input 
                     type="email" 
-                    value={profileData.email}
-                    className="glass-input w-full"
-                    placeholder="Enter your email"
+                    value={profileData.email || user?.email || 'Local Guest'}
                     disabled
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-[#8e918f] cursor-not-allowed opacity-75"
                   />
                 </div>
               </div>
 
-              <div className="space-y-4">
-                <h3 className="text-lg font-bold border-b border-white/10 pb-2 flex items-center gap-2">
-                  <Mic size={18} className="text-[#4285f4]" /> Voice Assistant
-                </h3>
-                
-                <div className="space-y-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-[#8e918f] ml-1">Voice Personality</label>
-                    <select 
-                      value={selectedVoice}
-                      onChange={(e) => setSelectedVoice(e.target.value)}
-                      className="glass-input w-full text-sm bg-[#131314]"
-                    >
-                      <option value="creator_doorbin">Doorbin (Hindi Roast)</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-[#8e918f] ml-1 flex justify-between items-center">
-                      <span className="flex items-center gap-1"><Volume2 size={12}/> Volume</span>
-                      <div className="flex items-center gap-2">
-                        <input 
-                          type="number" 
-                          min="0" max="100"
-                          value={Math.round(voiceVolume * 100)}
-                          onChange={(e) => setVoiceVolume(parseInt(e.target.value || '0') / 100)}
-                          className="w-12 bg-white/5 border border-white/10 rounded px-1 text-center text-[10px] outline-none focus:border-[#4285f4]"
-                        />
-                        <span className="text-[10px]">%</span>
-                      </div>
-                    </label>
-                    <input 
-                      type="range" 
-                      min="0" max="1" step="0.01"
-                      value={voiceVolume}
-                      onChange={(e) => setVoiceVolume(parseFloat(e.target.value))}
-                      className={cn("w-full accent-[#4285f4]", errors.volume && "accent-red-500")}
-                    />
-                    {errors.volume && (
-                      <p className="text-[10px] text-red-400 flex items-center gap-1 mt-1">
-                        <AlertCircle size={10} /> {errors.volume}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-[#8e918f] ml-1 flex justify-between items-center">
-                      <span className="flex items-center gap-1"><Clock size={12}/> Response Delay</span>
-                      <div className="flex items-center gap-2">
-                        <input 
-                          type="number" 
-                          min="0" max="3" step="0.1"
-                          value={voiceDelay}
-                          onChange={(e) => setVoiceDelay(parseFloat(e.target.value || '0'))}
-                          className="w-12 bg-white/5 border border-white/10 rounded px-1 text-center text-[10px] outline-none focus:border-[#4285f4]"
-                        />
-                        <span className="text-[10px]">s</span>
-                      </div>
-                    </label>
-                    <input 
-                      type="range" 
-                      min="0" max="3" step="0.1"
-                      value={voiceDelay}
-                      onChange={(e) => setVoiceDelay(parseFloat(e.target.value))}
-                      className={cn("w-full accent-[#4285f4]", errors.delay && "accent-red-500")}
-                    />
-                    {errors.delay && (
-                      <p className="text-[10px] text-red-400 flex items-center gap-1 mt-1">
-                        <AlertCircle size={10} /> {errors.delay}
-                      </p>
-                    )}
-                    <p className="text-[10px] text-[#8e918f] ml-1">Set to 0s for fastest response.</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-3">
+              <div className="pt-2 flex flex-col gap-2.5">
                 <button 
-                  onClick={onSave}
-                  disabled={hasErrors}
-                  className={cn(
-                    "w-full glass-button bg-gradient-to-r from-[#ff4e00] to-[#ff0080] text-white py-4 font-bold transition-all",
-                    hasErrors && "opacity-50 cursor-not-allowed grayscale"
+                  onClick={handleSave}
+                  className="w-full py-3 bg-[#4285f4] hover:bg-[#4285f4]/80 text-white font-bold rounded-xl text-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {saved ? (
+                    <>
+                      <Check size={16} />
+                      <span>Saved!</span>
+                    </>
+                  ) : (
+                    <span>Save Changes</span>
                   )}
-                >
-                  {hasErrors ? 'Fix errors to save' : 'Save Changes'}
                 </button>
+
                 <button 
-                  onClick={onLogout}
-                  className="w-full py-4 text-sm font-bold text-red-400 hover:bg-red-500/10 rounded-2xl transition-colors"
+                  onClick={onOpenCloudConsole}
+                  className="w-full py-3 bg-white/5 hover:bg-white/10 text-white text-xs font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 border border-white/5 cursor-pointer"
                 >
-                  Sign Out
+                  <Cloud size={15} className="text-blue-400" />
+                  <span>Open INFBOTT Cloud Console</span>
                 </button>
+
+                {user && (
+                  <button 
+                    onClick={onSignOut}
+                    className="w-full py-2.5 text-xs font-semibold text-red-400 hover:bg-red-500/10 rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer mt-1"
+                  >
+                    <LogOut size={14} />
+                    <span>Sign Out</span>
+                  </button>
+                )}
               </div>
             </div>
           </motion.div>
-        </motion.div>
+        </div>
       )}
     </AnimatePresence>
   );

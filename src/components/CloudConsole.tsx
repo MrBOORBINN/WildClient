@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Terminal, Cpu, Database, Cloud, Activity, Shield, Globe, Zap } from 'lucide-react';
+import { Terminal, Cpu, Database, Cloud, Activity, Shield, Globe, Zap, X } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 interface CloudConsoleProps {
@@ -23,25 +23,24 @@ const CloudConsole: React.FC<CloudConsoleProps> = ({ isOpen, onClose }) => {
     // Simulate system stats
     const interval = setInterval(() => {
       setSystemStats({
-        cpu: Math.floor(Math.random() * 30) + 5,
-        memory: Math.floor(Math.random() * 20) + 40,
-        latency: Math.floor(Math.random() * 50) + 10,
+        cpu: Math.floor(Math.random() * 20) + 5,
+        memory: Math.floor(Math.random() * 15) + 35,
+        latency: Math.floor(Math.random() * 30) + 12,
         uptime: new Date().toLocaleTimeString()
       });
 
-      // Add random logs
       const types: ('info' | 'warn' | 'error' | 'success')[] = ['info', 'warn', 'error', 'success'];
       const messages = [
         'Cloud synchronization active',
-        'Database query optimized',
-        'Security handshake successful',
-        'WILDCLEINT core heartbeat detected',
-        'Neural network weights updated',
-        'API endpoint reached',
-        'Session state persisted'
+        'Database state verified',
+        'Security handshake verified',
+        'INFBOTT neural core operational',
+        'Web search grounding layer ready',
+        'Session state persisted securely',
+        'Sandbox code engine standing by'
       ];
 
-      if (Math.random() > 0.7) {
+      if (Math.random() > 0.6) {
         const newLog = {
           id: Math.random().toString(36).substr(2, 9),
           type: types[Math.floor(Math.random() * types.length)],
@@ -65,7 +64,7 @@ const CloudConsole: React.FC<CloudConsoleProps> = ({ isOpen, onClose }) => {
       className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-10"
     >
       <div 
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
         onClick={onClose}
       />
       
@@ -77,16 +76,15 @@ const CloudConsole: React.FC<CloudConsoleProps> = ({ isOpen, onClose }) => {
               <Cloud className="text-blue-400" size={24} />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-white tracking-tight">WILDSTAR Cloud Console</h2>
-              <p className="text-xs text-white/40 font-mono">v3.1.0-stable // ACTIVE_SESSION</p>
+              <h2 className="text-xl font-bold text-white tracking-tight">INFBOTT Cloud Console</h2>
+              <p className="text-xs text-white/40 font-mono">v3.2.0-stable // ACTIVE_SESSION</p>
             </div>
           </div>
           <button 
             onClick={onClose}
-            className="w-10 h-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
+            className="p-2 hover:bg-white/10 rounded-full text-[#8e918f] hover:text-white transition-colors"
           >
-            <div className="w-5 h-0.5 bg-white/60 rotate-45 absolute" />
-            <div className="w-5 h-0.5 bg-white/60 -rotate-45 absolute" />
+            <X size={20} />
           </button>
         </div>
 
@@ -164,7 +162,7 @@ const CloudConsole: React.FC<CloudConsoleProps> = ({ isOpen, onClose }) => {
             <div className="h-3 w-px bg-white/10" />
             <span className="text-[10px] font-mono text-white/40 uppercase">Uptime: {systemStats.uptime}</span>
           </div>
-          <span className="text-[10px] font-mono text-white/20">WILDSTAR_OS // BUILD_2026.03.25</span>
+          <span className="text-[10px] font-mono text-white/20">INFBOTT_OS // PRODUCTION_READY</span>
         </div>
       </div>
     </motion.div>

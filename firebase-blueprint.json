@@ -38,6 +38,23 @@
         "reaction": { "type": "string", "description": "User reaction / feedback", "enum": ["thumbs_up", "thumbs_down", "heart"] }
       },
       "required": ["sessionId", "userId", "role", "content", "timestamp"]
+    },
+    "NotebookSnippet": {
+      "title": "NotebookSnippet",
+      "description": "A highlighted snippet saved to personal notebook",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Owner UID" },
+        "text": { "type": "string", "description": "Snippet content" },
+        "note": { "type": "string", "description": "Personal notes on snippet" },
+        "color": { "type": "string", "description": "Highlight color code" },
+        "tag": { "type": "string", "description": "Category or tag" },
+        "messageId": { "type": "string", "description": "Source message ID" },
+        "sessionId": { "type": "string", "description": "Source session ID" },
+        "sessionTitle": { "type": "string", "description": "Source session title" },
+        "createdAt": { "type": "number", "description": "Creation timestamp" }
+      },
+      "required": ["userId", "text", "createdAt"]
     }
   },
   "firestore": {
@@ -52,6 +69,10 @@
     "messages/{messageId}": {
       "schema": "Message",
       "description": "Chat messages"
+    },
+    "notebook/{snippetId}": {
+      "schema": "NotebookSnippet",
+      "description": "User personal notebook snippets"
     }
   }
 }
