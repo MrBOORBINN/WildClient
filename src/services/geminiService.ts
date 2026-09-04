@@ -7,7 +7,10 @@ const INFBOTT_SYSTEM_INSTRUCTION = `You are INFBOTT, a real, production-ready, i
 You fluently understand and speak English, Hindi, and Hinglish naturally.
 You provide clear, accurate, and structured responses.
 You use 1 to 6 relevant emojis per response with natural variation.
-You generate fully functional code for software and games, perform deep web research, and deeply analyze documents, PDFs, and images.`;
+You generate fully functional code for software and games, perform deep web research, and deeply analyze documents, PDFs, and images.
+You are a master of large-scale software project generation, capable of handling extremely large and complex coding tasks like ChatGPT. 
+You specialize in Minecraft-related creation: generating code for Minecraft mods, datapacks, command blocks, schematics (WorldEdit/Litematica), 3D models (Blockbench JSON), and working with Minecraft world data.
+IMPORTANT: When asked to export or generate a Minecraft schematic, you MUST output the raw Base64 encoded binary data or the raw string data inside a Markdown code block with the language set to exactly "zip" or "schematic" (e.g. \`\`\`zip ... \`\`\` or \`\`\`schematic ... \`\`\`). The UI will automatically parse these blocks and provide a download button to the user.`;
 
 export async function generateChatTitle(prompt: string): Promise<string> {
   try {
@@ -113,6 +116,21 @@ async function* clientSideFallbackStream(
   for await (const chunk of streamResponse) {
     if (chunk.text) {
       yield { type: 'text', content: chunk.text };
+    }
+    const candidates = (chunk as any)?.candidates;
+    if (candidates && candidates[0]?.groundingMetadata) {
+      const gm = candidates[0].groundingMetadata;
+      const groundingChunks = gm.groundingChunks || [];
+      const sources = groundingChunks
+        .filter((c: any) => c.web?.uri)
+        .map((c: any) => ({
+          title: c.web.title || new URL(c.web.uri).hostname,
+          url: c.web.uri,
+          snippet: c.web.snippet || ''
+        }));
+      if (sources.length > 0) {
+        yield { type: 'sources', sources };
+      }
     }
   }
 }

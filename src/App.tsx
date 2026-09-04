@@ -98,7 +98,7 @@ export function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [modelType, setModelType] = useState<ModelType>('fast');
-  const [isSearchEnabled, setIsSearchEnabled] = useState(true);
+  const [isSearchEnabled, setIsSearchEnabled] = useState(false);
 
   // UI state
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -441,7 +441,7 @@ export function App() {
         } else if (chunk.type === 'sources' && chunk.sources) {
           sourcesList.push(...chunk.sources);
           setMessages(prev => 
-            prev.map(m => m.id === assistantMessageId ? { ...m, sources: sourcesList } : m)
+            prev.map(m => m.id === assistantMessageId ? { ...m, sources: [...sourcesList] } : m)
           );
         }
       }
@@ -712,7 +712,7 @@ export function App() {
                     Hi {profileData?.fullName?.split(' ')[0] || 'there'}, how can INFBOTT help?
                   </motion.h2>
                   <p className="text-[#8e918f] text-sm max-w-lg mx-auto">
-                    Advanced web research, software & game development, and multi-file analysis.
+                    Advanced software development, Minecraft world/schematic generation, and 3D modeling.
                   </p>
                   <p className="text-[#4285f4] text-xs font-medium">
                     नमस्ते! मैं आपकी कैसे मदद कर सकता हूँ? (Hindi & Hinglish supported)
@@ -841,6 +841,29 @@ export function App() {
                           {msg.content}
                         </Markdown>
                       </div>
+
+                      {/* Simulated Progress Bar for Active Generation */}
+                      {isLoading && msg.role === 'assistant' && mIdx === messages.length - 1 && (
+                        <div className="mt-4 pt-3 border-t border-white/5">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-[10px] font-medium text-[#4285f4] uppercase tracking-wider flex items-center gap-1.5">
+                              <Sparkles size={10} className="animate-pulse" />
+                              Generating response...
+                            </span>
+                            <span className="text-[10px] font-bold text-white/50 font-mono">
+                              {Math.min(99, Math.max(2, Math.floor((msg.content.length / (msg.content.length + 300)) * 100)))}%
+                            </span>
+                          </div>
+                          <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                            <motion.div
+                              className="h-full bg-gradient-to-r from-[#4285f4] to-[#9b72cb] rounded-full"
+                              initial={{ width: '2%' }}
+                              animate={{ width: `${Math.min(99, Math.max(2, Math.floor((msg.content.length / (msg.content.length + 300)) * 100)))}%` }}
+                              transition={{ duration: 0.3, ease: 'easeOut' }}
+                            />
+                          </div>
+                        </div>
+                      )}
 
                       {/* Grounding Web Citations & Sources */}
                       {msg.sources && msg.sources.length > 0 && (

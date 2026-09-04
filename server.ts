@@ -21,8 +21,12 @@ CORE ATTRIBUTES & PRINCIPLES:
    - Extract key insights, identify visual components, diagnose errors visible in screenshots, and summarize or cross-reference documents.
 6. ADVANCED CODING & GAME DEVELOPMENT:
    - Generate production-ready, clean, well-commented code in JavaScript, TypeScript, Python, Java, Kotlin, C++, C#, HTML, CSS, SQL, JSON, and Bash.
+   - You are a master of large-scale software project generation, capable of handling extremely large and complex coding tasks like ChatGPT.
    - When asked for games (e.g. 2D platformers, puzzle games, arcade games, Snake, Pong, Canvas games), provide complete, runnable code containing canvas loops, keyboard/touch input handlers, and score trackers.
-7. INTELLIGENT TASK AGENT:
+7. MINECRAFT EXPERTISE & GENERATION:
+   - You specialize in Minecraft-related creation: generating code for Minecraft mods, datapacks, command blocks, schematics (WorldEdit/Litematica), 3D models (Blockbench JSON), and working with Minecraft world data.
+   - IMPORTANT: When asked to export or generate a Minecraft schematic, you MUST output the raw Base64 encoded binary data or the raw string data inside a Markdown code block with the language set to exactly "zip" or "schematic" (e.g. \`\`\`zip ... \`\`\` or \`\`\`schematic ... \`\`\`). The UI will automatically parse these blocks and provide a download button to the user.
+8. INTELLIGENT TASK AGENT:
    - For complex multi-step problems, follow a structured approach: UNDERSTAND → PLAN → EXECUTE → VERIFY → RESPOND.
    - Explain your step-by-step logic clearly when helpful.`;
 
@@ -62,15 +66,29 @@ async function startServer() {
         httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
       });
 
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: `Generate a short, concise 3 to 6 word title summarizing the main topic of this user prompt. Do not use quotes or punctuation.\n\nUser prompt: ${message.slice(0, 500)}`,
-        config: {
-          temperature: 0.3,
+      let retries = 3;
+      let response;
+      while (retries > 0) {
+        try {
+          response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: `Generate a short, concise 3 to 6 word title summarizing the main topic of this user prompt. Do not use quotes or punctuation.\n\nUser prompt: ${message.slice(0, 500)}`,
+            config: {
+              temperature: 0.3,
+            }
+          });
+          break;
+        } catch (error: any) {
+          retries--;
+          if (retries > 0 && (error?.status === 503 || error?.status === 429 || error?.message?.includes('503') || error?.message?.includes('429'))) {
+            await new Promise(r => setTimeout(r, 1000));
+          } else {
+            throw error;
+          }
         }
-      });
+      }
 
-      const cleanTitle = (response.text || "").trim().replace(/^["']|["']$/g, '').slice(0, 40) || "New Conversation";
+      const cleanTitle = (response?.text || "").trim().replace(/^["']|["']$/g, '').slice(0, 40) || "New Conversation";
       res.json({ title: cleanTitle });
     } catch (err: any) {
       console.warn("Title generation failed, using fallback:", err?.message);
@@ -111,8 +129,11 @@ async function startServer() {
         geminiHistory.pop();
       }
 
-      // Configure tools: Enable Google Search Grounding for web research
-      const tools: any[] = [{ googleSearch: {} }];
+      // Configure tools: Enable Google Search Grounding for web research only if requested
+      const tools: any[] = [];
+      if (enableSearch) {
+        tools.push({ googleSearch: {} });
+      }
 
       const chat = ai.chats.create({
         model: modelName,

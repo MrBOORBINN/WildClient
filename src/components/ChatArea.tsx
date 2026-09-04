@@ -2,8 +2,40 @@ import React from 'react';
 import { motion } from 'motion/react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { FileText, Sparkles, Layout } from 'lucide-react';
+import { FileText, Sparkles, Layout, Download, Code } from 'lucide-react';
 import { cn } from '../lib/utils';
+
+// Helper function to handle downloading Minecraft schematic/NBT data
+const handleDownloadMinecraftExport = (content: string, type: 'zip' | 'schematic') => {
+  let blob: Blob;
+  try {
+    // If the model provides base64 data, we should decode it into binary
+    if (content.match(/^[a-zA-Z0-9+/=]+$/) && content.length > 50) {
+      const byteCharacters = atob(content.trim());
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      blob = new Blob([byteArray], { type: 'application/octet-stream' });
+    } else {
+      // Otherwise, it might be SNBT or JSON text format
+      blob = new Blob([content], { type: 'text/plain' });
+    }
+  } catch (err) {
+    // Fallback to raw text if base64 decoding fails
+    blob = new Blob([content], { type: 'text/plain' });
+  }
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `exported_minecraft_data.${type}`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
 
 interface Message {
   id: string;
@@ -100,7 +132,53 @@ const ChatArea = ({
                     <Markdown 
                       remarkPlugins={[remarkGfm]}
                       components={{
-                        img: ({ node, ...props }) => props.src ? <img {...props} referrerPolicy="no-referrer" className="rounded-lg max-w-full h-auto my-2" /> : null
+                        img: ({ node, ...props }) => props.src ? <img {...props} referrerPolicy="no-referrer" className="rounded-lg max-w-full h-auto my-2" /> : null,
+                        code: ({ node, inline, className, children, ...props }: any) => {
+                          const match = /language-(\w+)/.exec(className || '');
+                          const language = match ? match[1].toLowerCase() : '';
+                          const content = String(children).replace(/\n$/, '');
+                          
+                          if (!inline && (language === 'zip' || language === 'schematic')) {
+                            const fileType = language as 'zip' | 'schematic';
+                            return (
+                              <div className="my-3 rounded-lg border border-blue-500/20 bg-blue-500/5 overflow-hidden">
+                                <div className="flex items-center justify-between px-3 py-2 bg-blue-500/10 border-b border-blue-500/10">
+                                  <div className="flex items-center gap-2 text-xs font-semibold text-blue-400">
+                                    <Code size={14} />
+                                    Minecraft {fileType.toUpperCase()} Export
+                                  </div>
+                                  <button
+                                    onClick={() => handleDownloadMinecraftExport(content, fileType)}
+                                    className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 text-[10px] uppercase tracking-wider font-bold transition-colors"
+                                  >
+                                    <Download size={12} />
+                                    Download .{fileType}
+                                  </button>
+                                </div>
+                                <div className="p-3 text-xs font-mono text-[#a8c7fa] overflow-x-auto max-h-40 whitespace-pre-wrap">
+                                  {content.length > 500 ? `${content.substring(0, 500)}... (truncated for preview)` : content}
+                                </div>
+                              </div>
+                            );
+                          }
+                          
+                          if (!inline) {
+                            return (
+                              <div className="rounded-lg bg-black/40 border border-white/10 my-2 overflow-hidden">
+                                <div className="px-3 py-1 bg-white/5 border-b border-white/5 text-[10px] text-gray-400 uppercase tracking-widest">{language || 'code'}</div>
+                                <div className="p-3 overflow-x-auto text-xs font-mono text-gray-300">
+                                  <code {...props}>{children}</code>
+                                </div>
+                              </div>
+                            );
+                          }
+                          
+                          return (
+                            <code className="bg-white/10 text-[#e3e3e3] px-1.5 py-0.5 rounded text-xs" {...props}>
+                              {children}
+                            </code>
+                          );
+                        }
                       }}
                     >
                       {msg.content}
