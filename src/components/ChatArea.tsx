@@ -6,7 +6,7 @@ import { FileText, Sparkles, Layout, Download, Code } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 // Helper function to handle downloading Minecraft schematic/NBT data
-const handleDownloadMinecraftExport = (content: string, type: 'zip' | 'schematic') => {
+const handleDownloadMinecraftExport = (content: string, type: 'zip' | 'schematic' | 'schem' | 'nbt' | string) => {
   let blob: Blob;
   try {
     // If the model provides base64 data, we should decode it into binary
@@ -138,21 +138,21 @@ const ChatArea = ({
                           const language = match ? match[1].toLowerCase() : '';
                           const content = String(children).replace(/\n$/, '');
                           
-                          if (!inline && (language === 'zip' || language === 'schematic')) {
-                            const fileType = language as 'zip' | 'schematic';
+                          if (language === 'zip' || language === 'schematic' || language === 'nbt' || language === 'schem') {
+                            const fileType = (language === 'nbt' || language === 'schem') ? 'schem' : language;
                             return (
                               <div className="my-3 rounded-lg border border-blue-500/20 bg-blue-500/5 overflow-hidden">
-                                <div className="flex items-center justify-between px-3 py-2 bg-blue-500/10 border-b border-blue-500/10">
+                                <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-blue-500/10 border-b border-blue-500/10">
                                   <div className="flex items-center gap-2 text-xs font-semibold text-blue-400">
                                     <Code size={14} />
                                     Minecraft {fileType.toUpperCase()} Export
                                   </div>
                                   <button
                                     onClick={() => handleDownloadMinecraftExport(content, fileType)}
-                                    className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 text-[10px] uppercase tracking-wider font-bold transition-colors"
+                                    className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded bg-blue-500 hover:bg-blue-400 text-white text-xs font-bold transition-colors shadow-sm ml-auto"
                                   >
-                                    <Download size={12} />
-                                    Download .{fileType}
+                                    <span className="text-sm font-black leading-none">↓</span>
+                                    <span>Download .{fileType}</span>
                                   </button>
                                 </div>
                                 <div className="p-3 text-xs font-mono text-[#a8c7fa] overflow-x-auto max-h-40 whitespace-pre-wrap">
@@ -162,7 +162,7 @@ const ChatArea = ({
                             );
                           }
                           
-                          if (!inline) {
+                          if (match) {
                             return (
                               <div className="rounded-lg bg-black/40 border border-white/10 my-2 overflow-hidden">
                                 <div className="px-3 py-1 bg-white/5 border-b border-white/5 text-[10px] text-gray-400 uppercase tracking-widest">{language || 'code'}</div>

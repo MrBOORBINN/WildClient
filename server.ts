@@ -71,7 +71,7 @@ async function startServer() {
       while (retries > 0) {
         try {
           response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
+            model: "gemini-3.6-flash",
             contents: `Generate a short, concise 3 to 6 word title summarizing the main topic of this user prompt. Do not use quotes or punctuation.\n\nUser prompt: ${message.slice(0, 500)}`,
             config: {
               temperature: 0.3,
@@ -113,7 +113,7 @@ async function startServer() {
     try {
       const { message, previousMessages, modelType, attachments, enableSearch } = req.body;
       
-      const modelName = "gemini-2.5-flash";
+      const modelName = "gemini-3.6-flash";
 
       const geminiHistory = [];
       if (previousMessages && previousMessages.length > 0) {

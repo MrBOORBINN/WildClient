@@ -68,7 +68,7 @@ async function* clientSideFallbackStream(
   }
 
   const chat = ai.chats.create({
-    model: "gemini-2.5-flash",
+    model: "gemini-3.6-flash",
     history: geminiHistory,
     config: {
       systemInstruction: INFBOTT_SYSTEM_INSTRUCTION,
