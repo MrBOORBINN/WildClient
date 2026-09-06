@@ -66,12 +66,12 @@ async function startServer() {
         httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
       });
 
-      let retries = 3;
+      let retries = 5;
       let response;
       while (retries > 0) {
         try {
           response = await ai.models.generateContent({
-            model: "gemini-3.6-flash",
+            model: "gemini-3.8-flash",
             contents: `Generate a short, concise 3 to 6 word title summarizing the main topic of this user prompt. Do not use quotes or punctuation.\n\nUser prompt: ${message.slice(0, 500)}`,
             config: {
               temperature: 0.3,
@@ -80,8 +80,9 @@ async function startServer() {
           break;
         } catch (error: any) {
           retries--;
-          if (retries > 0 && (error?.status === 503 || error?.status === 429 || error?.message?.includes('503') || error?.message?.includes('429'))) {
-            await new Promise(r => setTimeout(r, 1000));
+          if (retries > 0 && (error?.status === 503 || error?.status === 429 || error?.message?.includes('503') || error?.message?.includes('429') || error?.message?.includes('UNAVAILABLE'))) {
+            const delay = 1500 * (5 - retries);
+            await new Promise(r => setTimeout(r, delay));
           } else {
             throw error;
           }
@@ -110,10 +111,14 @@ async function startServer() {
       "Connection": "keep-alive",
     });
 
+    const keepAlive = setInterval(() => {
+      res.write(': keepalive\n\n');
+    }, 15000);
+
     try {
       const { message, previousMessages, modelType, attachments, enableSearch } = req.body;
       
-      const modelName = "gemini-3.6-flash";
+      const modelName = "gemini-3.8-flash";
 
       const geminiHistory = [];
       if (previousMessages && previousMessages.length > 0) {
@@ -191,16 +196,17 @@ async function startServer() {
       }
 
       let streamResponse;
-      let retries = 3;
+      let retries = 5;
       while (retries > 0) {
         try {
           streamResponse = await chat.sendMessageStream({ message: parts });
           break;
         } catch (error: any) {
           retries--;
-          if (retries > 0 && (error?.status === 503 || error?.status === 429 || error?.message?.includes('503') || error?.message?.includes('429'))) {
-            console.log(`Backend proxy: retry ${3 - retries} due to ${error.status || 'rate limit'}. Waiting 1.5s...`);
-            await new Promise(r => setTimeout(r, 1500));
+          if (retries > 0 && (error?.status === 503 || error?.status === 429 || error?.message?.includes('503') || error?.message?.includes('429') || error?.message?.includes('UNAVAILABLE'))) {
+            const delay = 2000 * (5 - retries);
+            console.log(`Backend proxy: retry ${5 - retries} due to ${error.status || 'rate limit'}. Waiting ${delay}ms...`);
+            await new Promise(r => setTimeout(r, delay));
           } else {
             throw error;
           }
@@ -239,8 +245,17 @@ async function startServer() {
       res.write(`data: [DONE]\n\n`);
     } catch (error: any) {
       console.error("API Error in backend proxy:", error);
-      res.write(`data: ${JSON.stringify({ type: 'error', message: error.message || "Failed to get response." })}\n\n`);
+      let friendlyMessage = error.message || "Failed to get response.";
+      
+      if (friendlyMessage.includes('UNAVAILABLE') || friendlyMessage.includes('503')) {
+        friendlyMessage = "INFBOTT is currently experiencing very high global demand (Server 503). Spikes in demand are temporary. Please wait a moment and try again.";
+      } else if (friendlyMessage.includes('429') || friendlyMessage.includes('quota') || friendlyMessage.includes('Resource Exhausted')) {
+        friendlyMessage = "INFBOTT has reached its API quota limit. Please wait a moment and try again, or configure your own Gemini API Key in the settings to continue.";
+      }
+
+      res.write(`data: ${JSON.stringify({ type: 'error', message: friendlyMessage })}\n\n`);
     } finally {
+      clearInterval(keepAlive);
       res.end();
     }
   });
