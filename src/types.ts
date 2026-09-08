@@ -34,6 +34,7 @@ export interface Message {
   timestamp: number;
   attachments?: Attachment[];
   sources?: GroundingSource[];
+  generationTimeMs?: number;
   reaction?: 'thumbs_up' | 'thumbs_down' | 'heart' | null;
 }
 
