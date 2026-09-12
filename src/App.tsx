@@ -466,12 +466,18 @@ export function App() {
         isSearchEnabled
       );
 
+      let lastUpdateTime = Date.now();
       for await (const chunk of stream) {
         if (chunk.type === 'text' && chunk.content) {
           fullContent += chunk.content;
-          setMessages(prev => 
-            prev.map(m => m.id === assistantMessageId ? { ...m, content: fullContent } : m)
-          );
+          const now = Date.now();
+          // Throttle UI updates to roughly 60fps (~16ms) or 20fps (~50ms) to reduce re-render lag
+          if (now - lastUpdateTime > 50) {
+            setMessages(prev => 
+              prev.map(m => m.id === assistantMessageId ? { ...m, content: fullContent } : m)
+            );
+            lastUpdateTime = now;
+          }
         } else if (chunk.type === 'sources' && chunk.sources) {
           sourcesList.push(...chunk.sources);
           setMessages(prev => 
@@ -479,6 +485,11 @@ export function App() {
           );
         }
       }
+      
+      // Final catch-up state update to ensure nothing was left out in the throttle
+      setMessages(prev => 
+        prev.map(m => m.id === assistantMessageId ? { ...m, content: fullContent, sources: [...sourcesList] } : m)
+      );
       const endTime = Date.now();
       const genTime = endTime - startTime;
       
