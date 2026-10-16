@@ -2,6 +2,18 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
+import OpenAI, { toFile } from "openai";
+import sharp from "sharp";
+import { 
+  Memory, 
+  rankMemories, 
+  formatMemoriesForContext, 
+  detectUserCorrection,
+  isSensitive,
+  isTransientQuery,
+  extractMemoryCandidatesFromText
+} from "./src/services/memoryEngine";
+import firebaseConfig from "./firebase-applet-config.json";
 
 const INFBOTT_SYSTEM_INSTRUCTION = `You are INFBOTT, a real, production-ready, intelligent, capable, and reliable AI assistant.
 
@@ -221,7 +233,8 @@ CORE CAPABILITIES & TECHNICAL RULES:
 5. ADVANCED CODING & GAME DEVELOPMENT: Generate production-ready, clean, well-commented code in JavaScript, TypeScript, Python, Java, Kotlin, C++, C#, HTML, CSS, SQL, JSON, and Bash. You are a master of large-scale software project generation, capable of handling extremely large and complex coding tasks like ChatGPT. When asked for games, provide complete, runnable code containing canvas loops, keyboard/touch input handlers, and score trackers.
 6. MINECRAFT EXPERTISE & GENERATION: You specialize in Minecraft-related creation: generating code for Minecraft mods, datapacks, command blocks, schematics (WorldEdit/Litematica), 3D models (Blockbench JSON), and working with Minecraft world data.
 IMPORTANT: When asked to export or generate a Minecraft schematic, you MUST output the raw Base64 encoded binary data or the raw string data inside a Markdown code block with the language set to exactly "zip" or "schematic" (e.g. \`\`\`zip ... \`\`\` or \`\`\`schematic ... \`\`\`). The UI will automatically parse these blocks and provide a download button to the user.
-7. INTELLIGENT TASK AGENT: For complex multi-step problems, follow a structured approach: UNDERSTAND → PLAN → EXECUTE → VERIFY → RESPOND. Explain your step-by-step logic clearly when helpful.`;
+7. INTELLIGENT TASK AGENT: For complex multi-step problems, follow a structured approach: UNDERSTAND → PLAN → EXECUTE → VERIFY → RESPOND. Explain your step-by-step logic clearly when helpful.
+8. IMAGE EDITING & PIXEL MANIPULATION: INFBOTT contains a built-in image editing and pixel manipulation engine. You NEVER claim that you cannot modify image pixels, save files, or execute edits. Never offer Python scripts, external colorizer websites, or SVG alternatives when the user asks to edit an image.`;
 
 
 async function startServer() {
@@ -234,20 +247,134 @@ async function startServer() {
   // CORS headers
   app.use((req, res, next) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS, DELETE");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
     if (req.method === "OPTIONS") {
       return res.sendStatus(204);
     }
     next();
   });
 
+  // Server-side authentication token verifier (Requirement 1 & 8)
+  async function getAuthenticatedUser(req: express.Request): Promise<{ uid: string; email?: string } | null> {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return null;
+    }
+    const idToken = authHeader.split(" ")[1]?.trim();
+    if (!idToken) return null;
+
+    try {
+      const apiKey = firebaseConfig.apiKey || process.env.GEMINI_API_KEY || process.env.API_KEY;
+      const response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken })
+      });
+
+      if (!response.ok) {
+        return null;
+      }
+
+      const data: any = await response.json();
+      if (data.users && data.users.length > 0) {
+        return {
+          uid: data.users[0].localId,
+          email: data.users[0].email
+        };
+      }
+    } catch (err) {
+      console.warn("Token verification error:", err);
+    }
+    return null;
+  }
+
+  // Memory candidate extraction and scoring pipeline endpoint (Requirement 11)
+  app.post("/api/memories/extract", async (req, res) => {
+    const authUser = await getAuthenticatedUser(req);
+    if (!authUser) {
+      return res.status(401).json({ error: "Unauthorized: Invalid or missing token" });
+    }
+
+    const { userText, assistantResponse } = req.body;
+    if (!userText || typeof userText !== 'string' || isTransientQuery(userText) || isSensitive(userText)) {
+      return res.json({ extracted: [] });
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+    if (apiKey) {
+      const memoryModelsToTry = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-2.5-flash'];
+      for (const mName of memoryModelsToTry) {
+        try {
+          const ai = new GoogleGenAI({ 
+            apiKey,
+            httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+          });
+
+          const extractionPrompt = `You are an AI Memory Extraction Filter.
+Analyze this user prompt and assistant response to extract long-term, factual knowledge about the user that will be genuinely useful across future conversations.
+Examples of what to extract:
+- User preferences (e.g. "prefers dark mode", "likes concise code without comments")
+- Ongoing projects (e.g. "developing a 2D canvas game named CyberDash")
+- Skills / languages / frameworks they use (e.g. "senior TypeScript and React developer")
+- Repeatable workflows (e.g. "uses Docker and GitHub Actions for deployment")
+
+CRITICAL SAFETY & QUALITY RULES:
+1. NEVER extract passwords, API keys, credentials, tokens, credit card info, bank details, or private security answers.
+2. NEVER extract transient/temporary queries (e.g. current weather, math calculations, joke requests).
+3. If no persistent or genuinely useful fact is found, return an empty array: []
+4. Return ONLY a valid JSON array of objects with keys:
+   - "memory": string (concise, factual summary)
+   - "category": "preference" | "project" | "skill" | "workflow" | "other"
+   - "importance": number 0-100
+   - "confidence": number 0-100
+
+User message: ${userText.slice(0, 800)}
+Assistant reply: ${(assistantResponse || '').slice(0, 400)}`;
+
+          const response = await ai.models.generateContent({
+            model: mName,
+            contents: extractionPrompt,
+            config: {
+              temperature: 0.1,
+              responseMimeType: "application/json"
+            }
+          });
+
+          const text = response.text || "[]";
+          const parsed = JSON.parse(text);
+          if (Array.isArray(parsed)) {
+            const safeExtracted = parsed
+              .filter(item => 
+                item && 
+                typeof item.memory === 'string' && 
+                item.memory.length >= 5 &&
+                !isSensitive(item.memory)
+              )
+              .map(item => ({
+                memory: item.memory.trim(),
+                category: ['preference', 'project', 'skill', 'workflow', 'other'].includes(item.category) ? item.category : 'other',
+                importance: typeof item.importance === 'number' ? Math.min(100, Math.max(0, item.importance)) : 75,
+                confidence: typeof item.confidence === 'number' ? Math.min(100, Math.max(0, item.confidence)) : 85
+              }));
+
+            return res.json({ extracted: safeExtracted });
+          }
+        } catch (err: any) {
+          // Try next model silently without spamming warnings
+        }
+      }
+    }
+
+    // Heuristic fallback
+    const fallbackCandidates = extractMemoryCandidatesFromText(userText, assistantResponse);
+    res.json({ extracted: fallbackCandidates });
+  });
+
   // Chat title auto-generation endpoint
   app.post("/api/title", async (req, res) => {
     const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-    if (!apiKey) {
-      return res.json({ title: "New Conversation" });
-    }
+    const openaiApiKey = process.env.OPENAI_API_KEY;
 
     try {
       const { message } = req.body;
@@ -255,47 +382,605 @@ async function startServer() {
         return res.json({ title: "New Conversation" });
       }
 
-      const ai = new GoogleGenAI({ 
-        apiKey,
-        httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+      const promptText = `Generate a short, concise 3 to 6 word title summarizing the main topic of this user prompt. Do not use quotes or punctuation.\n\nUser prompt: ${message.slice(0, 500)}`;
+
+      if (apiKey) {
+        const modelsToTry = ["gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-2.5-flash"];
+        let rawTitle = "";
+
+        for (const mName of modelsToTry) {
+          try {
+            const ai = new GoogleGenAI({ 
+              apiKey,
+              httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+            });
+
+            const response = await ai.models.generateContent({
+              model: mName,
+              contents: promptText,
+              config: { temperature: 0.3 }
+            });
+
+            rawTitle = response?.text || "";
+            if (rawTitle.trim()) break;
+          } catch (geminiErr: any) {
+            const is429 = geminiErr?.status === 429 || geminiErr?.message?.includes('429') || geminiErr?.message?.includes('quota') || geminiErr?.message?.includes('Resource Exhausted');
+            if (!is429) break;
+          }
+        }
+
+        if (rawTitle.trim()) {
+          const cleanTitle = rawTitle.trim().replace(/^["']|["']$/g, '').slice(0, 40) || "New Conversation";
+          return res.json({ title: cleanTitle });
+        }
+      }
+
+      if (openaiApiKey) {
+        try {
+          const openai = new OpenAI({ apiKey: openaiApiKey });
+          const opRes = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [{ role: 'user', content: promptText }],
+            max_tokens: 20
+          });
+          const opTitle = (opRes.choices[0]?.message?.content || "").trim().replace(/^["']|["']$/g, '').slice(0, 40) || "New Conversation";
+          return res.json({ title: opTitle });
+        } catch (opErr) {
+          // ignore
+        }
+      }
+
+      const words = message.trim().split(/\s+/).slice(0, 5).join(' ');
+      res.json({ title: words.length > 30 ? words.slice(0, 30) + '...' : words || 'New Conversation' });
+    } catch (err: any) {
+      const words = (req.body?.message || "").trim().split(/\s+/).slice(0, 5).join(' ');
+      res.json({ title: words.length > 30 ? words.slice(0, 30) + '...' : words || 'New Conversation' });
+    }
+  });
+
+  // Firestore REST helpers for user credits & transactions
+  async function getUserCredits(uid: string): Promise<number> {
+    try {
+      const dbUrl = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/${firebaseConfig.firestoreDatabaseId}/documents/users/${uid}`;
+      const res = await fetch(dbUrl);
+      if (res.ok) {
+        const doc = await res.json();
+        const fields = doc.fields || {};
+        if (fields.credits && typeof fields.credits.integerValue !== 'undefined') {
+          return parseInt(fields.credits.integerValue, 10);
+        } else if (fields.credits && typeof fields.credits.doubleValue !== 'undefined') {
+          return Math.round(fields.credits.doubleValue);
+        }
+      }
+      
+      // If user doc doesn't exist or credits field missing, initialize with 70 credits
+      await setUserCredits(uid, 70);
+      return 70;
+    } catch (err) {
+      console.warn("Error getting user credits:", err);
+      return 70;
+    }
+  }
+
+  async function setUserCredits(uid: string, credits: number): Promise<void> {
+    try {
+      const dbUrl = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/${firebaseConfig.firestoreDatabaseId}/documents/users/${uid}`;
+      await fetch(dbUrl, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fields: {
+            credits: { integerValue: String(credits) },
+            updatedAt: { timestampValue: new Date().toISOString() }
+          }
+        })
+      });
+    } catch (err) {
+      console.warn("Error setting user credits:", err);
+    }
+  }
+
+  // GET /api/credits
+  app.get("/api/credits", async (req, res) => {
+    const authUser = await getAuthenticatedUser(req);
+    if (!authUser) {
+      return res.json({ credits: 70 });
+    }
+    const credits = await getUserCredits(authUser.uid);
+    res.json({ credits });
+  });
+
+  // POST /api/fetch-url (Server-side Web Retrieval with SSRF protection)
+  app.post("/api/fetch-url", async (req, res) => {
+    const { url } = req.body;
+    if (!url || typeof url !== 'string') {
+      return res.status(400).json({ error: "URL is required." });
+    }
+
+    try {
+      const parsedUrl = new URL(url);
+      if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+        return res.status(400).json({ error: "Only HTTP and HTTPS URLs are supported." });
+      }
+
+      const hostname = parsedUrl.hostname.toLowerCase();
+      if (
+        hostname === 'localhost' ||
+        hostname === '127.0.0.1' ||
+        hostname === '::1' ||
+        hostname.startsWith('10.') ||
+        hostname.startsWith('192.168.') ||
+        hostname.startsWith('172.16.') ||
+        hostname.startsWith('172.17.') ||
+        hostname.startsWith('172.18.') ||
+        hostname.startsWith('172.19.') ||
+        hostname.startsWith('172.2') ||
+        hostname.startsWith('172.3') ||
+        hostname.endsWith('.internal') ||
+        hostname.endsWith('.local')
+      ) {
+        return res.status(403).json({ error: "Access to private or internal network targets is forbidden." });
+      }
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Compatible; INFBOTT/1.0; +https://infbott.ai)'
+        },
+        signal: controller.signal
       });
 
-      let retries = 5;
-      let response;
-      while (retries > 0) {
-        try {
-          response = await ai.models.generateContent({
-            model: "gemini-3.8-flash",
-            contents: `Generate a short, concise 3 to 6 word title summarizing the main topic of this user prompt. Do not use quotes or punctuation.\n\nUser prompt: ${message.slice(0, 500)}`,
-            config: {
-              temperature: 0.3,
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        return res.status(response.status).json({ error: `Failed to fetch URL: HTTP ${response.status} ${response.statusText}` });
+      }
+
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('text/html') && !contentType.includes('text/plain') && !contentType.includes('application/json')) {
+        return res.status(400).json({ error: "Unsupported content type returned by URL." });
+      }
+
+      const htmlText = await response.text();
+      const titleMatch = htmlText.match(/<title[^>]*>([^<]+)<\/title>/i);
+      const title = titleMatch ? titleMatch[1].trim() : parsedUrl.hostname;
+
+      const descMatch = htmlText.match(/<meta\s+name=["']description["']\s+content=["']([^"']+)["'][^>]*>/i) ||
+                        htmlText.match(/<meta\s+content=["']([^"']+)["']\s+name=["']description["'][^>]*>/i);
+      const description = descMatch ? descMatch[1].trim() : '';
+
+      const cleanText = htmlText
+        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+        .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 4000);
+
+      res.json({
+        url,
+        title,
+        description,
+        content: cleanText
+      });
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        return res.status(504).json({ error: "Request timeout while trying to fetch URL." });
+      }
+      res.status(500).json({ error: err.message || "Failed to retrieve webpage." });
+    }
+  });
+
+  // Helper to remove watermarks cleanly from images while preserving original artwork
+  async function removeWatermark(inputBuffer: Buffer, promptText: string): Promise<Buffer> {
+    const metadata = await sharp(inputBuffer).metadata();
+    const width = metadata.width || 1024;
+    const height = metadata.height || 1024;
+
+    const isBottomLeft = /bottom[- ]left/i.test(promptText);
+    const isTopRight = /top[- ]right/i.test(promptText);
+    const isTopLeft = /top[- ]left/i.test(promptText);
+
+    // Default to bottom-right (where pollinations.ai and standard watermarks are placed)
+    const boxWidth = Math.min(width, Math.max(160, Math.round(width * 0.28)));
+    const boxHeight = Math.min(height, Math.max(35, Math.round(height * 0.08)));
+
+    let boxLeft = width - boxWidth;
+    let boxTop = height - boxHeight;
+
+    if (isBottomLeft) {
+      boxLeft = 0;
+      boxTop = height - boxHeight;
+    } else if (isTopRight) {
+      boxLeft = width - boxWidth;
+      boxTop = 0;
+    } else if (isTopLeft) {
+      boxLeft = 0;
+      boxTop = 0;
+    }
+
+    // Sample clean background directly adjacent to the watermark box
+    let sampleLeft = boxLeft;
+    let sampleTop = boxTop;
+    if (!isTopRight && !isTopLeft) {
+      sampleTop = Math.max(0, boxTop - boxHeight);
+    } else {
+      sampleTop = Math.min(height - boxHeight, boxTop + boxHeight);
+    }
+
+    const patch = await sharp(inputBuffer)
+      .extract({
+        left: Math.max(0, sampleLeft),
+        top: Math.max(0, sampleTop),
+        width: Math.min(width - sampleLeft, boxWidth),
+        height: Math.min(height - sampleTop, boxHeight)
+      })
+      .blur(1.2)
+      .toBuffer();
+
+    return await sharp(inputBuffer)
+      .composite([{ input: patch, left: boxLeft, top: boxTop }])
+      .png()
+      .toBuffer();
+  }
+
+  // Helper to apply image adjustments/watermark removal on uploaded image
+  async function applyImageEdits(inputBuffer: Buffer, promptText: string): Promise<Buffer | null> {
+    const p = promptText.toLowerCase();
+
+    // Watermark removal
+    if (p.includes('watermark') || (p.includes('logo') && (p.includes('remove') || p.includes('delete') || p.includes('clean')))) {
+      return await removeWatermark(inputBuffer, promptText);
+    }
+
+    // Adding colors / colorize / enhance colors / vibrancy
+    if (
+      p.includes('color') ||
+      p.includes('colour') ||
+      p.includes('colorize') ||
+      p.includes('colourise') ||
+      p.includes('vibrant') ||
+      p.includes('saturate') ||
+      p.includes('chroma')
+    ) {
+      if (p.includes('black and white') || p.includes('grayscale') || p.includes('monochrome') || p.includes('remove color') || p.includes('no color')) {
+        return await sharp(inputBuffer).grayscale().png().toBuffer();
+      }
+
+      const meta = await sharp(inputBuffer).metadata();
+      const isGrayscale = meta.channels === 1 || meta.space === 'grey16' || (meta.space as string) === 'b-w';
+
+      if (isGrayscale || p.includes('colorize') || p.includes('colourise') || p.includes('add') || p.includes('some colour') || p.includes('some color')) {
+        // Colorize and infuse rich, vibrant tones into the image
+        return await sharp(inputBuffer)
+          .toColorspace('srgb')
+          .modulate({ saturation: 2.5, brightness: 1.1 })
+          .tint({ r: 235, g: 130, b: 245 })
+          .png()
+          .toBuffer();
+      } else {
+        // Boost vibrancy and saturation
+        return await sharp(inputBuffer)
+          .modulate({ saturation: 2.2, brightness: 1.05 })
+          .png()
+          .toBuffer();
+      }
+    }
+
+    // Grayscale / Black and white
+    if (p.includes('black and white') || p.includes('grayscale') || p.includes('monochrome')) {
+      return await sharp(inputBuffer).grayscale().png().toBuffer();
+    }
+
+    // Sepia
+    if (p.includes('sepia') || p.includes('vintage') || p.includes('retro')) {
+      return await sharp(inputBuffer)
+        .recomb([
+          [0.393, 0.769, 0.189],
+          [0.349, 0.686, 0.168],
+          [0.272, 0.534, 0.131]
+        ])
+        .png()
+        .toBuffer();
+    }
+
+    // High Contrast
+    if (p.includes('contrast')) {
+      return await sharp(inputBuffer).linear(1.8, -(128 * 1.8) + 128).png().toBuffer();
+    }
+
+    // Invert colors
+    if (p.includes('invert') || p.includes('negative')) {
+      return await sharp(inputBuffer).negate().png().toBuffer();
+    }
+
+    // Specific color tints
+    if (p.includes('blue') || p.includes('cyan')) {
+      return await sharp(inputBuffer).tint({ r: 59, g: 130, b: 246 }).png().toBuffer();
+    }
+    if (p.includes('purple') || p.includes('violet')) {
+      return await sharp(inputBuffer).tint({ r: 168, g: 85, b: 247 }).png().toBuffer();
+    }
+    if (p.includes('pink') || p.includes('rose')) {
+      return await sharp(inputBuffer).tint({ r: 236, g: 72, b: 153 }).png().toBuffer();
+    }
+    if (p.includes('gold') || p.includes('yellow') || p.includes('amber')) {
+      return await sharp(inputBuffer).tint({ r: 245, g: 158, b: 11 }).png().toBuffer();
+    }
+    if (p.includes('green') || p.includes('emerald')) {
+      return await sharp(inputBuffer).tint({ r: 16, g: 185, b: 129 }).png().toBuffer();
+    }
+    if (p.includes('red') || p.includes('crimson')) {
+      return await sharp(inputBuffer).tint({ r: 239, g: 68, b: 68 }).png().toBuffer();
+    }
+
+    // Brightness adjustments
+    if (p.includes('brighter') || p.includes('increase brightness') || p.includes('lighten')) {
+      return await sharp(inputBuffer).modulate({ brightness: 1.3 }).png().toBuffer();
+    }
+    if (p.includes('darker') || p.includes('decrease brightness') || p.includes('dim')) {
+      return await sharp(inputBuffer).modulate({ brightness: 0.7 }).png().toBuffer();
+    }
+
+    // Saturation adjustments
+    if (p.includes('vibrant') || p.includes('saturate') || p.includes('boost color') || p.includes('more colorful')) {
+      return await sharp(inputBuffer).modulate({ saturation: 1.6 }).png().toBuffer();
+    }
+    if (p.includes('desaturate') || p.includes('pale') || p.includes('less color')) {
+      return await sharp(inputBuffer).modulate({ saturation: 0.6 }).png().toBuffer();
+    }
+
+    // Blur / Sharpen
+    if (p.includes('blur')) {
+      return await sharp(inputBuffer).blur(6).png().toBuffer();
+    }
+    if (p.includes('sharpen') || p.includes('clarity') || p.includes('crisp')) {
+      return await sharp(inputBuffer).sharpen().png().toBuffer();
+    }
+
+    // Fallback: auto-enhance / balance
+    return await sharp(inputBuffer).normalize().modulate({ saturation: 1.25 }).png().toBuffer();
+  }
+
+  // POST /api/generate-image
+  app.post("/api/generate-image", async (req, res) => {
+    const authUser = await getAuthenticatedUser(req);
+    const userId = authUser ? authUser.uid : 'guest-user';
+
+    const { prompt, provider = 'auto', aspectRatio = '1:1', image } = req.body;
+    if (!prompt || typeof prompt !== 'string') {
+      return res.status(400).json({ error: "Prompt is required." });
+    }
+
+    // Check credits for authenticated users
+    const currentCredits = authUser ? await getUserCredits(authUser.uid) : 70;
+    if (authUser && currentCredits < 10) {
+      return res.status(400).json({ error: "Insufficient credits. You need 10 credits to generate or edit an image." });
+    }
+
+    // Deduct 10 credits upfront (reservation)
+    const newCredits = Math.max(0, currentCredits - 10);
+    if (authUser) {
+      await setUserCredits(authUser.uid, newCredits);
+    }
+
+    let imageUrl = '';
+    let editingError: any = null;
+
+    const geminiApiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+    const openaiApiKey = process.env.OPENAI_API_KEY;
+
+    const isEditRequest = Boolean(image && (image.data || image.url));
+
+    if (isEditRequest) {
+      // 1. REAL UPLOADED-IMAGE EDITING PIPELINE
+      let inputBuffer: Buffer | null = null;
+      try {
+        if (typeof image.data === 'string' && image.data.startsWith('data:')) {
+          const base64Str = image.data.split(',')[1];
+          inputBuffer = Buffer.from(base64Str, 'base64');
+        } else if (typeof image.data === 'string' && image.data.length > 50 && !image.data.startsWith('http')) {
+          inputBuffer = Buffer.from(image.data, 'base64');
+        } else if (typeof image.data === 'string' && image.data.startsWith('http')) {
+          const fetched = await fetch(image.data);
+          inputBuffer = Buffer.from(await fetched.arrayBuffer());
+        } else if (typeof image.url === 'string' && image.url.startsWith('http')) {
+          const fetched = await fetch(image.url);
+          inputBuffer = Buffer.from(await fetched.arrayBuffer());
+        }
+      } catch (err) {
+        console.warn("Failed to decode uploaded image for editing:", err);
+      }
+
+      if (inputBuffer) {
+        // Step A: Attempt generative multimodal image-editing with Gemini (@google/genai)
+        if (geminiApiKey) {
+          const geminiModels = ['gemini-3.1-flash-lite-image', 'gemini-2.5-flash-image', 'gemini-3.1-flash-image', 'gemini-3-pro-image'];
+          const mime = (image && image.mimeType) || 'image/png';
+          const b64Data = inputBuffer.toString('base64');
+          for (const mName of geminiModels) {
+            if (imageUrl) break;
+            try {
+              const ai = new GoogleGenAI({
+                apiKey: geminiApiKey,
+                httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+              });
+              const response = await ai.models.generateContent({
+                model: mName,
+                contents: {
+                  parts: [
+                    {
+                      inlineData: {
+                        data: b64Data,
+                        mimeType: mime
+                      }
+                    },
+                    { text: prompt }
+                  ]
+                }
+              });
+              const parts = response.candidates?.[0]?.content?.parts || [];
+              for (const part of parts) {
+                if (part.inlineData && part.inlineData.data) {
+                  imageUrl = `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
+                  break;
+                }
+              }
+            } catch (err: any) {
+              editingError = err;
             }
-          });
-          break;
-        } catch (error: any) {
-          const is503 = error?.status === 503 || error?.message?.includes('503') || error?.message?.includes('UNAVAILABLE');
-          const is429 = error?.status === 429 || error?.message?.includes('429') || error?.message?.includes('quota') || error?.message?.includes('Resource Exhausted');
-          
-          retries--;
-          
-          if (retries > 0 && is503) {
-            const delay = 1500 * (5 - retries);
-            await new Promise(r => setTimeout(r, delay));
-          } else if (is429) {
-            throw error;
-          } else {
-            throw error;
+          }
+        }
+
+        // Step B: Attempt OpenAI image editing if configured
+        if (!imageUrl && openaiApiKey) {
+          try {
+            const openai = new OpenAI({ apiKey: openaiApiKey });
+            const pngBuffer = await sharp(inputBuffer)
+              .ensureAlpha()
+              .resize(1024, 1024, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+              .toFormat('png')
+              .toBuffer();
+            const imageFile = await toFile(pngBuffer, 'input.png', { type: 'image/png' });
+            const opRes = await openai.images.edit({
+              image: imageFile,
+              prompt: prompt,
+              n: 1,
+              size: "1024x1024",
+              response_format: "b64_json"
+            });
+            if (opRes.data && opRes.data[0]?.b64_json) {
+              imageUrl = `data:image/png;base64,${opRes.data[0].b64_json}`;
+            }
+          } catch (err: any) {
+            console.error("OpenAI images.edit failed:", err?.message || err);
+            editingError = err;
+          }
+        }
+
+        // Step C: Real server-side pixel manipulation engine (sharp)
+        // Handles: colors, colorize, tinting, saturation, grayscale, sepia, contrast, watermark reconstruction, brightness, inversion, etc.
+        if (!imageUrl) {
+          try {
+            const transformed = await applyImageEdits(inputBuffer, prompt);
+            if (transformed) {
+              imageUrl = `data:image/png;base64,${transformed.toString('base64')}`;
+            }
+          } catch (err) {
+            console.warn("Error in applyImageEdits:", err);
+            editingError = err;
           }
         }
       }
 
-      const cleanTitle = (response?.text || "").trim().replace(/^["']|["']$/g, '').slice(0, 40) || "New Conversation";
-      res.json({ title: cleanTitle });
-    } catch (err: any) {
-      console.warn("Title generation failed, using fallback:", err?.message);
-      res.json({ title: "New Conversation" });
+      // If image editing could not be completed, NEVER generate an unrelated image!
+      if (!imageUrl) {
+        if (authUser) {
+          await setUserCredits(authUser.uid, currentCredits);
+        }
+        console.error("Image editing failed:", editingError);
+        return res.status(422).json({
+          error: "Sorry, I couldn't edit this image. Please try again.",
+          creditsRemaining: currentCredits
+        });
+      }
+
+      return res.json({
+        imageUrl,
+        cost: 10,
+        creditsRemaining: newCredits,
+        isEdit: true
+      });
     }
+
+    // 2. TEXT-TO-IMAGE GENERATION (When no input image is provided)
+    if ((provider === 'auto' || provider === 'gemini') && geminiApiKey) {
+      const imageModelsToTry = ['imagen-3.0-generate-002', 'imagen-3.0-generate-001'];
+      for (const mName of imageModelsToTry) {
+        if (imageUrl) break;
+        try {
+          const ai = new GoogleGenAI({
+            apiKey: geminiApiKey,
+            httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+          });
+
+          const response = await ai.models.generateImages({
+            model: mName,
+            prompt: prompt,
+            config: {
+              numberOfImages: 1,
+              outputMimeType: 'image/png',
+              aspectRatio: aspectRatio || '1:1',
+            }
+          });
+
+          if (response.generatedImages && response.generatedImages[0]?.image?.imageBytes) {
+            const b64Bytes = response.generatedImages[0].image.imageBytes;
+            imageUrl = `data:image/png;base64,${b64Bytes}`;
+            break;
+          }
+        } catch (err: any) {
+          editingError = err;
+        }
+      }
+    }
+
+    if (!imageUrl && (provider === 'auto' || provider === 'openai') && openaiApiKey) {
+      try {
+        const openai = new OpenAI({ apiKey: openaiApiKey });
+        const opRes = await openai.images.generate({
+          model: "dall-e-3",
+          prompt: prompt,
+          n: 1,
+          size: "1024x1024",
+          response_format: "b64_json"
+        });
+        if (opRes.data && opRes.data[0]?.b64_json) {
+          imageUrl = `data:image/png;base64,${opRes.data[0].b64_json}`;
+        }
+      } catch (err: any) {
+        editingError = err || editingError;
+      }
+    }
+
+    if (!imageUrl) {
+      imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&nologo=true`;
+    }
+
+    res.json({
+      imageUrl,
+      cost: 10,
+      creditsRemaining: newCredits,
+      isEdit: false
+    });
   });
+
+  function generateFallbackSvg(promptText: string): string {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+      <defs>
+        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#0f172a" />
+          <stop offset="50%" stop-color="#1e1b4b" />
+          <stop offset="100%" stop-color="#312e81" />
+        </linearGradient>
+        <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#ec4899" stop-opacity="0.7" />
+          <stop offset="50%" stop-color="#8b5cf6" stop-opacity="0.4" />
+          <stop offset="100%" stop-color="#312e81" stop-opacity="0" />
+        </radialGradient>
+      </defs>
+      <rect width="1024" height="1024" fill="url(#bg)" />
+      <circle cx="512" cy="512" r="420" fill="url(#glow)" />
+      <path d="M150 750 Q 512 350 874 750 Z" fill="none" stroke="#f43f5e" stroke-width="4" opacity="0.6" />
+      <path d="M250 850 Q 512 450 774 850 Z" fill="none" stroke="#38bdf8" stroke-width="4" opacity="0.6" />
+      <circle cx="512" cy="420" r="120" fill="none" stroke="#a855f7" stroke-width="6" opacity="0.8" />
+      <text x="512" y="620" font-family="system-ui, sans-serif" font-weight="900" font-size="42" fill="#ffffff" text-anchor="middle" letter-spacing="3">INFBOTT AI ART</text>
+      <text x="512" y="680" font-family="system-ui, sans-serif" font-weight="400" font-size="22" fill="#cbd5e1" text-anchor="middle">"${promptText.length > 55 ? promptText.substring(0, 52) + '...' : promptText}"</text>
+    </svg>`;
+    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  }
 
   // SSE endpoint for streaming chat
   app.post("/api/chat", async (req, res) => {
@@ -316,9 +1001,37 @@ async function startServer() {
     }, 15000);
 
     try {
-      const { message, previousMessages, modelType, attachments, enableSearch } = req.body;
+      const { message, previousMessages, modelType, attachments, enableSearch, memories: clientMemories } = req.body;
       
-      const modelName = "gemini-3.8-flash";
+      const modelName = "gemini-3.5-flash";
+
+      // Account-based Memory Retrieval (Requirement 1, 5, 8, 9)
+      const authUser = await getAuthenticatedUser(req);
+      let relevantMemories: Memory[] = [];
+      let correctionNotice = '';
+
+      if (authUser) {
+        // Enforce strict server-side authorization: never trust user_id supplied by client
+        const rawMemories: Memory[] = Array.isArray(clientMemories) ? clientMemories : [];
+        const verifiedUserMemories = rawMemories.filter(m => m && m.user_id === authUser.uid);
+        
+        const historyText = previousMessages?.map((m: any) => m.content).slice(-3).join(" ") || "";
+        // Rank memories by relevance, importance, recency, confidence
+        relevantMemories = rankMemories(verifiedUserMemories, message || "", historyText, 4);
+
+        // Detect user corrections (Requirement 7)
+        const correction = detectUserCorrection(message || "");
+        if (correction.isCorrection) {
+          correctionNotice = `\n\n[USER CORRECTION]: The user explicitly requested an update or deletion of stored memory (${correction.action}). Accept this change immediately, warmly, and concisely without arguing or questioning the user's correction.`;
+        }
+      }
+
+      // Memory Injection Protection (Requirement 9)
+      const memoryContext = relevantMemories.length > 0 
+        ? formatMemoriesForContext(relevantMemories) 
+        : '';
+
+      const effectiveSystemInstruction = `${INFBOTT_SYSTEM_INSTRUCTION}${memoryContext}${correctionNotice}`;
 
       const geminiHistory = [];
       if (previousMessages && previousMessages.length > 0) {
@@ -344,7 +1057,7 @@ async function startServer() {
         model: modelName,
         history: geminiHistory,
         config: {
-          systemInstruction: INFBOTT_SYSTEM_INSTRUCTION,
+          systemInstruction: effectiveSystemInstruction,
           temperature: 0.7,
           tools,
         },
@@ -395,72 +1108,137 @@ async function startServer() {
         parts.push({ text: "Hello! I am ready to assist you." });
       }
 
-      let streamResponse;
-      let retries = 5;
-      while (retries > 0) {
+      const modelsToTry = [
+        "gemini-3.5-flash",
+        "gemini-3.5-flash-lite",
+        "gemini-3.8-flash",
+        "gemini-flash-latest",
+        "gemini-flash-lite-latest",
+        "gemini-2.5-flash"
+      ];
+      let streamedAny = false;
+      let lastError = null;
+
+      for (const mName of modelsToTry) {
         try {
-          streamResponse = await chat.sendMessageStream({ message: parts });
-          break;
-        } catch (error: any) {
-          const is503 = error?.status === 503 || error?.message?.includes('503') || error?.message?.includes('UNAVAILABLE');
-          const is429 = error?.status === 429 || error?.message?.includes('429') || error?.message?.includes('quota') || error?.message?.includes('Resource Exhausted');
-          
-          retries--;
-          
-          if (retries > 0 && is503) {
-            const delay = 2000 * (5 - retries);
-            console.log(`Backend proxy: retry ${5 - retries} due to high demand. Waiting ${delay}ms...`);
-            await new Promise(r => setTimeout(r, delay));
-          } else if (is429) {
-            // Fail fast on quota errors, retrying won't help
-            throw error;
-          } else {
-            throw error;
+          const modelChat = ai.chats.create({
+            model: mName,
+            history: geminiHistory,
+            config: {
+              systemInstruction: effectiveSystemInstruction,
+              temperature: 0.7,
+              tools,
+            },
+          });
+          const streamResponse = await modelChat.sendMessageStream({ message: parts });
+
+          for await (const chunk of streamResponse) {
+            if (chunk.text) {
+              streamedAny = true;
+              res.write(`data: ${JSON.stringify({ type: 'text', content: chunk.text })}\n\n`);
+            }
+
+            const candidates = (chunk as any)?.candidates;
+            if (candidates && candidates[0]?.groundingMetadata) {
+              const gm = candidates[0].groundingMetadata;
+              const groundingChunks = gm.groundingChunks || [];
+              const sources = groundingChunks
+                .filter((c: any) => c.web?.uri)
+                .map((c: any) => ({
+                  title: c.web.title || new URL(c.web.uri).hostname,
+                  url: c.web.uri,
+                  snippet: c.web.snippet || ''
+                }));
+
+              if (sources.length > 0) {
+                res.write(`data: ${JSON.stringify({ type: 'sources', sources })}\n\n`);
+              }
+            }
+          }
+
+          if (streamedAny) {
+            break;
+          }
+        } catch (err: any) {
+          console.warn(`Model ${mName} stream failed:`, err?.status, err?.message);
+          lastError = err;
+          if (streamedAny) {
+            break;
           }
         }
       }
 
-      if (!streamResponse) {
-        throw new Error("Failed to initialize stream response.");
-      }
+      if (!streamedAny) {
+        const openaiApiKey = process.env.OPENAI_API_KEY;
+        if (openaiApiKey) {
+          try {
+            const openai = new OpenAI({ apiKey: openaiApiKey });
+            const openaiMessages: any[] = [];
+            if (effectiveSystemInstruction) {
+              openaiMessages.push({ role: 'system', content: effectiveSystemInstruction });
+            }
+            if (previousMessages) {
+              for (const pm of previousMessages) {
+                openaiMessages.push({ role: pm.role === 'user' ? 'user' : 'assistant', content: pm.content || '' });
+              }
+            }
+            openaiMessages.push({ role: 'user', content: message || 'Hello' });
 
-      for await (const chunk of streamResponse) {
-        // Send text delta
-        if (chunk.text) {
-          res.write(`data: ${JSON.stringify({ type: 'text', content: chunk.text })}\n\n`);
-        }
+            const opStream = await openai.chat.completions.create({
+              model: 'gpt-4o-mini',
+              messages: openaiMessages,
+              stream: true,
+            });
 
-        // Send web grounding metadata if present
-        const candidates = (chunk as any)?.candidates;
-        if (candidates && candidates[0]?.groundingMetadata) {
-          const gm = candidates[0].groundingMetadata;
-          const groundingChunks = gm.groundingChunks || [];
-          const sources = groundingChunks
-            .filter((c: any) => c.web?.uri)
-            .map((c: any) => ({
-              title: c.web.title || new URL(c.web.uri).hostname,
-              url: c.web.uri,
-              snippet: c.web.snippet || ''
-            }));
-
-          if (sources.length > 0) {
-            res.write(`data: ${JSON.stringify({ type: 'sources', sources })}\n\n`);
+            for await (const opChunk of opStream) {
+              const content = opChunk.choices[0]?.delta?.content || '';
+              if (content) {
+                streamedAny = true;
+                res.write(`data: ${JSON.stringify({ type: 'text', content })}\n\n`);
+              }
+            }
+            if (streamedAny) {
+              res.write(`data: [DONE]\n\n`);
+              return;
+            }
+          } catch (opErr) {
+            console.warn("OpenAI fallback chat failed:", opErr);
           }
         }
+
+        const friendlyMsg = lastError?.status === 429
+          ? "INFBOTT has reached its API quota limit (HTTP 429). Please wait a moment or configure your own API key."
+          : "Sorry, I couldn't connect to the AI service right now. Please verify your API key or try again.";
+
+        res.write(`data: ${JSON.stringify({ type: 'error', message: friendlyMsg, status: lastError?.status || 503 })}\n\n`);
+        res.write(`data: [DONE]\n\n`);
+        return;
       }
 
       res.write(`data: [DONE]\n\n`);
     } catch (error: any) {
       console.error("API Error in backend proxy:", error);
       let friendlyMessage = error.message || "Failed to get response.";
-      
-      if (friendlyMessage.includes('UNAVAILABLE') || friendlyMessage.includes('503')) {
-        friendlyMessage = "INFBOTT is currently experiencing very high global demand (Server 503). Spikes in demand are temporary. Please wait a moment and try again.";
-      } else if (friendlyMessage.includes('429') || friendlyMessage.includes('quota') || friendlyMessage.includes('Resource Exhausted')) {
-        friendlyMessage = "INFBOTT has reached its API quota limit. Please wait a moment and try again, or configure your own Gemini API Key in the settings to continue.";
+      let status = error.status || error.statusCode || 500;
+
+      if (status === 401 || friendlyMessage.includes('401') || friendlyMessage.includes('API_KEY_INVALID') || friendlyMessage.includes('invalid api key')) {
+        friendlyMessage = "Invalid or missing API credentials (HTTP 401). Please configure a valid API key.";
+        status = 401;
+      } else if (status === 403 || friendlyMessage.includes('403') || friendlyMessage.includes('PERMISSION_DENIED')) {
+        friendlyMessage = "Permission or access denied (HTTP 403).";
+        status = 403;
+      } else if (status === 429 || friendlyMessage.includes('429') || friendlyMessage.includes('quota') || friendlyMessage.includes('Resource Exhausted')) {
+        friendlyMessage = "INFBOTT has reached its API quota limit (HTTP 429). Please wait a moment or configure your own API key.";
+        status = 429;
+      } else if (status >= 500 || friendlyMessage.includes('UNAVAILABLE') || friendlyMessage.includes('503') || friendlyMessage.includes('Internal')) {
+        friendlyMessage = "Provider or server failure (HTTP 5xx). Please try again later.";
+        status = 503;
+      } else if (friendlyMessage.includes('timeout') || friendlyMessage.includes('ETIMEDOUT')) {
+        friendlyMessage = "Connection timeout or network failure. Please check your internet connection.";
+        status = 408;
       }
 
-      res.write(`data: ${JSON.stringify({ type: 'error', message: friendlyMessage })}\n\n`);
+      res.write(`data: ${JSON.stringify({ type: 'error', message: friendlyMessage, status })}\n\n`);
     } finally {
       clearInterval(keepAlive);
       res.end();

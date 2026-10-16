@@ -2,8 +2,10 @@ import React from 'react';
 import { motion } from 'motion/react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { FileText, Sparkles, Layout, Download, Code } from 'lucide-react';
+import { FileText, Sparkles, Layout, Download, Code, Clock } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { calculateReadingTime } from '../utils/readingTime';
+import { ChatImageCard } from './ChatImageCard';
 
 // Helper function to handle downloading Minecraft schematic/NBT data
 const handleDownloadMinecraftExport = (content: string, type: 'zip' | 'schematic' | 'schem' | 'nbt' | string) => {
@@ -124,7 +126,9 @@ const ChatArea = ({
                   {msg.attachments && msg.attachments.length > 0 && (
                     <div className="flex gap-2 mb-2 overflow-x-auto">
                       {msg.attachments.map((att: any, idx: number) => (
-                        <img key={`chat-att-${msg.id || mIdx}-${att.id || idx}`} src={att.data || undefined} alt="attachment" className="w-20 h-20 object-cover rounded-lg border border-white/10" />
+                        att.data ? (
+                          <img key={`chat-att-${msg.id || mIdx}-${att.id || idx}`} src={att.data} alt="attachment" className="w-20 h-20 object-cover rounded-lg border border-white/10" />
+                        ) : null
                       ))}
                     </div>
                   )}
@@ -132,7 +136,7 @@ const ChatArea = ({
                     <Markdown 
                       remarkPlugins={[remarkGfm]}
                       components={{
-                        img: ({ node, ...props }) => props.src ? <img {...props} referrerPolicy="no-referrer" className="rounded-lg max-w-full h-auto my-2" /> : null,
+                        img: ({ node, ...props }: any) => props.src ? <ChatImageCard src={props.src} alt={props.alt || "INFBOTT Image"} /> : null,
                         code: ({ node, inline, className, children, ...props }: any) => {
                           const match = /language-(\w+)/.exec(className || '');
                           const language = match ? match[1].toLowerCase() : '';
@@ -184,6 +188,16 @@ const ChatArea = ({
                       {msg.content}
                     </Markdown>
                   </div>
+
+                  {msg.role === 'assistant' && (
+                    <div className="flex items-center gap-2 mt-2 pt-2 border-t border-white/5 text-[10px] text-[#8e918f]">
+                      <span>{new Date(msg.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      <span>•</span>
+                      <span className="flex items-center gap-1 font-medium text-gray-400">
+                        <Clock size={11} /> {calculateReadingTime(msg.content).formatted}
+                      </span>
+                    </div>
+                  )}
                   
                   {/* Message Actions */}
                   <div className={cn(

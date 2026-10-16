@@ -266,11 +266,14 @@ const Sidebar = ({
           className="flex items-center gap-2.5 w-full p-2 rounded-xl hover:bg-white/5 transition-colors text-xs text-[#c4c7c5] hover:text-white mt-1 border border-white/5"
         >
           <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#ff4e00] to-[#ff0080] flex items-center justify-center text-[10px] font-bold overflow-hidden shrink-0">
-            {user?.avatarUrl || user?.photoURL || user?.avatar_url ? (
-              <img src={user.avatarUrl || user.photoURL || user.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
-            ) : (
-              (user?.displayName || user?.full_name || user?.email || 'U')[0]?.toUpperCase()
-            )}
+            {(() => {
+              const avatarSrc = user?.avatarUrl || user?.photoURL || user?.avatar_url;
+              return avatarSrc ? (
+                <img src={avatarSrc} alt="Avatar" className="w-full h-full object-cover" />
+              ) : (
+                (user?.displayName || user?.full_name || user?.email || 'U')[0]?.toUpperCase()
+              );
+            })()}
           </div>
           <span className="truncate font-medium">{user?.displayName || user?.full_name || user?.email || 'User'}</span>
           <Settings size={13} className="ml-auto opacity-50 shrink-0" />

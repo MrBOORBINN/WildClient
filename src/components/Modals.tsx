@@ -367,7 +367,11 @@ export const BackgroundSettingsModal = ({
                         currentBackground === bg.url ? "border-[#ff4e00]" : "border-transparent hover:border-white/20"
                       )}
                     >
-                      <img src={bg.url} alt={bg.name} className="w-full h-full object-cover" />
+                      {bg.url ? (
+                        <img src={bg.url} alt={bg.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full bg-white/5" />
+                      )}
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                         <span className="text-[10px] font-bold text-white">{bg.name}</span>
                       </div>

@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Upload, 
@@ -36,6 +36,7 @@ interface InputBarProps {
   handleAction: (action: string) => void;
   handleSummarizeChat: () => void;
   setIsFeedbackModalOpen: (open: boolean) => void;
+  currentSessionId?: string | null;
 }
 
 const InputBar: React.FC<InputBarProps> = ({
@@ -56,9 +57,29 @@ const InputBar: React.FC<InputBarProps> = ({
   setIsNotebookOpen,
   handleAction,
   handleSummarizeChat,
-  setIsFeedbackModalOpen
+  setIsFeedbackModalOpen,
+  currentSessionId
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Restore draft when session changes
+  useEffect(() => {
+    const sessionIdKey = currentSessionId || 'general';
+    const savedDraft = localStorage.getItem(`infbott_draft_${sessionIdKey}`);
+    if (savedDraft !== null && savedDraft !== undefined) {
+      setInput(savedDraft);
+    } else {
+      setInput('');
+    }
+  }, [currentSessionId, setInput]);
+
+  // Save draft when input changes
+  useEffect(() => {
+    const sessionIdKey = currentSessionId || 'general';
+    try {
+      localStorage.setItem(`infbott_draft_${sessionIdKey}`, input);
+    } catch (e) {}
+  }, [input, currentSessionId]);
 
   const onFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;

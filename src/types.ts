@@ -35,10 +35,29 @@ export interface Message {
   attachments?: Attachment[];
   sources?: GroundingSource[];
   generationTimeMs?: number;
+  perfStartTime?: number;
   reaction?: 'thumbs_up' | 'thumbs_down' | 'heart' | null;
+  isImageGenerationLoading?: boolean;
+  imagePrompt?: string;
+  isEdit?: boolean;
 }
 
 export type SnippetColor = 'amber' | 'emerald' | 'sky' | 'purple' | 'rose';
+
+export type MemoryCategory = 'preference' | 'project' | 'skill' | 'workflow' | 'other';
+
+export interface Memory {
+  id?: string;
+  user_id: string;
+  memory: string;
+  category: MemoryCategory;
+  importance: number;
+  confidence: number;
+  source: string;
+  created_at: string;
+  updated_at: string;
+  relevanceScore?: number;
+}
 
 export interface NotebookSnippet {
   id: string;

@@ -55,6 +55,22 @@
         "createdAt": { "type": "number", "description": "Creation timestamp" }
       },
       "required": ["userId", "text", "createdAt"]
+    },
+    "Memory": {
+      "title": "Memory",
+      "description": "A long-term account-based memory record",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string", "description": "Immutable owner UID" },
+        "memory": { "type": "string", "description": "The concise factual memory content", "maxLength": 1000 },
+        "category": { "type": "string", "enum": ["preference", "project", "skill", "workflow", "other"] },
+        "importance": { "type": "number", "description": "Importance score 0 to 100" },
+        "confidence": { "type": "number", "description": "Confidence score 0 to 100" },
+        "source": { "type": "string", "description": "Source of memory" },
+        "created_at": { "type": "string", "description": "ISO timestamp string of creation" },
+        "updated_at": { "type": "string", "description": "ISO timestamp string of last update" }
+      },
+      "required": ["user_id", "memory", "category", "importance", "confidence"]
     }
   },
   "firestore": {
@@ -73,6 +89,10 @@
     "notebook/{snippetId}": {
       "schema": "NotebookSnippet",
       "description": "User personal notebook snippets"
+    },
+    "memories/{memoryId}": {
+      "schema": "Memory",
+      "description": "User account-isolated long-term memories"
     }
   }
 }

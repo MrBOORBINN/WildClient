@@ -1,3 +1,4 @@
+import { GenerationTimer } from './components/GenerationTimer';
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Menu, 
@@ -33,12 +34,15 @@ import {
   RotateCcw,
   FileCode,
   Globe,
-  Download
+  Download,
+  BookOpen,
+  Clock
 } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
+import { calculateReadingTime } from './utils/readingTime';
 import { 
   getChatResponseStream, 
   ModelType, 
@@ -67,7 +71,13 @@ import {
   onAuthStateChanged, 
   signOut 
 } from 'firebase/auth';
-import { Message, Attachment, NotebookSnippet, SnippetColor, GroundingSource } from './types';
+import { Message, Attachment, NotebookSnippet, SnippetColor, GroundingSource, Memory } from './types';
+import { 
+  getMemoriesForUser, 
+  deleteMemory, 
+  handleCorrectionIfPresent, 
+  runBackgroundMemoryExtraction 
+} from './services/memoryService';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import InputBar from './components/InputBar';
@@ -85,6 +95,8 @@ import { HighlightFloatingMenu } from './components/HighlightFloatingMenu';
 import { CodePreviewModal } from './components/CodePreviewModal';
 import CloudConsole from './components/CloudConsole';
 import ProfileModal from './components/ProfileModal';
+import { ImageGenerationLoader } from './components/ImageGenerationLoader';
+import { ChatImageCard } from './components/ChatImageCard';
 
 // Helper function to handle downloading Minecraft schematic/NBT data
 const handleDownloadMinecraftExport = (content: string, type: string) => {
@@ -153,6 +165,45 @@ export function App() {
   const [isMusicModalOpen, setIsMusicModalOpen] = useState(false);
   const [isDriveModalOpen, setIsDriveModalOpen] = useState(false);
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
+  const [userCredits, setUserCredits] = useState<number>(70);
+
+  useEffect(() => {
+    if (!user) {
+      setUserCredits(70);
+      return;
+    }
+    const fetchCredits = async () => {
+      try {
+        const idToken = await user.getIdToken().catch(() => null);
+        const res = await fetch('/api/credits', {
+          headers: idToken ? { 'Authorization': `Bearer ${idToken}` } : {}
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (typeof data.credits === 'number') {
+            setUserCredits(data.credits);
+          }
+        }
+      } catch (e) {
+        console.warn("Failed to fetch credits:", e);
+      }
+    };
+    fetchCredits();
+  }, [user]);
+
+  const handleDeductCredits = (amount: number) => {
+    setUserCredits(prev => Math.max(0, prev - amount));
+  };
+
+  const handleImageGeneratedFromModal = (imageUrl: string, prompt: string) => {
+    const imageMessage: Message = {
+      id: `assistant-img-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+      role: 'assistant',
+      content: `Here is the AI generated image for prompt: "${prompt}"\n\n![AI Generated Image](${imageUrl})`,
+      timestamp: Date.now()
+    };
+    setMessages(prev => [...prev, imageMessage]);
+  };
 
   // Code & Game Runner Preview Sandbox
   const [codeSandboxData, setCodeSandboxData] = useState<{
@@ -316,6 +367,47 @@ export function App() {
     return () => unsubscribe();
   }, [user]);
 
+  // Account-Based Long-Term Memory Listener (Requirement 1, 6, 8)
+  const [memories, setMemories] = useState<Memory[]>([]);
+
+  useEffect(() => {
+    if (!user?.uid) {
+      setMemories([]);
+      return;
+    }
+
+    const q = query(
+      collection(db, 'memories'),
+      where('user_id', '==', user.uid)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const memoriesData = snapshot.docs.map(docSnap => ({
+        id: docSnap.id,
+        ...docSnap.data()
+      })) as Memory[];
+      setMemories(memoriesData);
+    }, (error) => {
+      console.warn("Firestore memories error, using local state:", error);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  const handleDeleteMemory = async (id: string) => {
+    await deleteMemory(id);
+    setMemories(prev => prev.filter(m => m.id !== id));
+  };
+
+  const handleClearAllMemories = async () => {
+    for (const mem of memories) {
+      if (mem.id) {
+        await deleteMemory(mem.id);
+      }
+    }
+    setMemories([]);
+  };
+
   // Scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -381,6 +473,192 @@ export function App() {
     const trimmedText = text.trim();
     if ((!trimmedText && attachments.length === 0) || isLoading) return;
 
+    // 1. Check for local chat commands
+    const renameMatch = trimmedText.match(/^rename\s+this\s+chat\s+to\s+(.+)$/i);
+    if (renameMatch) {
+      const newName = renameMatch[1].trim();
+      const userMsg: Message = {
+        id: `user-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+        role: 'user',
+        content: trimmedText,
+        timestamp: Date.now()
+      };
+      const assistantMsg: Message = {
+        id: `assistant-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+        role: 'assistant',
+        content: `Chat successfully renamed to "${newName}".`,
+        timestamp: Date.now()
+      };
+      setMessages(prev => [...prev, userMsg, assistantMsg]);
+      setInput('');
+      if (currentSessionId) {
+        setSessions(prev => prev.map(s => s.id === currentSessionId ? { ...s, title: newName } : s));
+        if (user?.uid) {
+          try {
+            await setDoc(doc(db, 'sessions', currentSessionId), { title: newName }, { merge: true });
+          } catch (e) {}
+        }
+      }
+      return;
+    }
+
+    if (/^delete\s+this\s+chat$/i.test(trimmedText)) {
+      const userMsg: Message = {
+        id: `user-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+        role: 'user',
+        content: trimmedText,
+        timestamp: Date.now()
+      };
+      setMessages(prev => [...prev, userMsg]);
+      setInput('');
+      if (currentSessionId) {
+        await handleDeleteSession(currentSessionId);
+      }
+      return;
+    }
+
+    if (/^(new\s+chat|start\s+a\s+new\s+chat)$/i.test(trimmedText)) {
+      setInput('');
+      handleNewChat();
+      return;
+    }
+
+    if (/^(clear\s+chat|clear\s+history)$/i.test(trimmedText)) {
+      const userMsg: Message = {
+        id: `user-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+        role: 'user',
+        content: trimmedText,
+        timestamp: Date.now()
+      };
+      setMessages(prev => [...prev, userMsg]);
+      setInput('');
+      setMessages([]);
+      return;
+    }
+
+    // Check for automatic image generation or editing intent
+    let targetImage = attachments.find(a => a.type === 'image' && a.data);
+
+    // If no image is currently attached, check if recent messages in chat had an image
+    if (!targetImage) {
+      for (let i = messages.length - 1; i >= Math.max(0, messages.length - 8); i--) {
+        const msg = messages[i];
+        if (msg.attachments && msg.attachments.length > 0) {
+          const imgAtt = msg.attachments.find(a => a.type === 'image' && a.data);
+          if (imgAtt) {
+            targetImage = imgAtt;
+            break;
+          }
+        }
+        if (msg.role === 'assistant' && msg.content) {
+          const mdImgMatch = msg.content.match(/!\[.*?\]\((data:image\/[^)]+|https?:\/\/[^)]+)\)/);
+          if (mdImgMatch && mdImgMatch[1]) {
+            targetImage = {
+              type: 'image',
+              data: mdImgMatch[1],
+              name: 'Previous Image',
+              mimeType: 'image/png'
+            };
+            break;
+          }
+        }
+      }
+    }
+
+    const hasImageAttachment = Boolean(targetImage);
+    const imageIntentRegex = /^(create|generate|make|draw|paint|produce|render)\s+(an?\s+)?(image|picture|photo|artwork|illustration|logo|avatar|banner)/i;
+    const isImageIntent = imageIntentRegex.test(trimmedText) || trimmedText.toLowerCase().includes('generate an image') || trimmedText.toLowerCase().includes('create an image') || trimmedText.toLowerCase().includes('make a picture');
+    const editKeywordsRegex = /(edit|change|remove|delete|clean|replace|modify|update|adjust|enhance|fix|watermark|background|crop|colour|color|reconstruct|keep|filter|grayscale|sepia|contrast|saturate|tint|add|brighten|darken|invert|turn)/i;
+    const isImageEditIntent = hasImageAttachment && (editKeywordsRegex.test(trimmedText) || (attachments.length > 0 && attachments.some(a => a.type === 'image')));
+
+    if (isImageIntent || isImageEditIntent) {
+      if (userCredits < 10) {
+        const insufficientMsg: Message = {
+          id: `assistant-insufficient-${Date.now()}`,
+          role: 'assistant',
+          content: 'Insufficient credits. You need 10 credits to generate or edit an image.',
+          timestamp: Date.now()
+        };
+        setMessages(prev => [...prev, { id: `user-${Date.now()}`, role: 'user', content: trimmedText, attachments: [...attachments], timestamp: Date.now() }, insufficientMsg]);
+        setInput('');
+        setAttachments([]);
+        return;
+      }
+
+      setUserCredits(prev => Math.max(0, prev - 10));
+      const userMsg: Message = {
+        id: `user-${Date.now()}`,
+        role: 'user',
+        content: trimmedText,
+        attachments: attachments.length > 0 ? [...attachments] : (isImageEditIntent && targetImage ? [targetImage] : []),
+        timestamp: Date.now()
+      };
+      const loadingMsgId = `assistant-loading-${Date.now()}`;
+      const loadingMsg: Message = {
+        id: loadingMsgId,
+        role: 'assistant',
+        content: isImageEditIntent ? 'Editing image (-10 credits)...' : 'Generating image (-10 credits)...',
+        timestamp: Date.now(),
+        perfStartTime: performance.now(),
+        isImageGenerationLoading: true,
+        imagePrompt: trimmedText,
+        isEdit: isImageEditIntent
+      };
+      setMessages(prev => [...prev, userMsg, loadingMsg]);
+      setInput('');
+      setAttachments([]);
+      setIsLoading(true);
+
+      try {
+        const idToken = user ? await user.getIdToken().catch(() => null) : null;
+        const response = await fetch('/api/generate-image', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(idToken ? { 'Authorization': `Bearer ${idToken}` } : {})
+          },
+          body: JSON.stringify({
+            prompt: trimmedText,
+            provider: 'auto',
+            image: targetImage
+          })
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || (isImageEditIntent ? "Sorry, I couldn't edit this image. Please try again." : "Image generation failed"));
+        }
+        if (data.imageUrl) {
+          const successMsg: Message = {
+            id: `assistant-img-${Date.now()}`,
+            role: 'assistant',
+            content: isImageEditIntent
+              ? `Here is your edited image according to your instructions: "${trimmedText}"\n\n![Edited Image](${data.imageUrl})`
+              : `Here is your generated image for prompt: "${trimmedText}"\n\n![Generated Image](${data.imageUrl})`,
+            timestamp: Date.now()
+          };
+          setMessages(prev => prev.map(m => m.id === loadingMsgId ? successMsg : m));
+          if (typeof data.creditsRemaining === 'number') {
+            setUserCredits(data.creditsRemaining);
+          }
+        }
+      } catch (err: any) {
+        setUserCredits(prev => prev + 10);
+        const errorContent = isImageEditIntent 
+          ? (err.message && err.message.includes("Sorry") ? err.message : "Sorry, I couldn't edit this image. Please try again.")
+          : `Image generation error: ${err.message || 'Failed to generate image'}. Your 10 credits have been refunded.`;
+        const errorMsg: Message = {
+          id: `assistant-err-${Date.now()}`,
+          role: 'assistant',
+          content: errorContent,
+          timestamp: Date.now()
+        };
+        setMessages(prev => prev.map(m => m.id === loadingMsgId ? errorMsg : m));
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
     let sessionId = currentSessionId;
     const isNewConversation = !sessionId;
 
@@ -432,11 +710,13 @@ export function App() {
 
     const assistantMessageId = `assistant-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
     const startTime = Date.now();
+    const perfStart = performance.now();
     const assistantMessage: Message = {
       id: assistantMessageId,
       role: 'assistant',
       content: '',
       timestamp: startTime,
+      perfStartTime: perfStart,
       sources: []
     };
 
@@ -453,6 +733,16 @@ export function App() {
       } catch (e) {}
     }
 
+    // Get Firebase ID token for account-authenticated memory requests (Requirement 1 & 8)
+    const idToken = user ? await user.getIdToken().catch(() => undefined) : undefined;
+
+    // Process user correction if present (Requirement 7: "Don't remember that", "Forget this", "Remember this")
+    if (user) {
+      handleCorrectionIfPresent(trimmedText, memories).catch(err => {
+        console.warn("User correction processing:", err);
+      });
+    }
+
     try {
       let fullContent = '';
       const sourcesList: GroundingSource[] = [];
@@ -463,7 +753,9 @@ export function App() {
         modelType, 
         userMessage.attachments, 
         0.7, 
-        isSearchEnabled
+        isSearchEnabled,
+        idToken,
+        memories
       );
 
       let lastUpdateTime = Date.now();
@@ -490,8 +782,8 @@ export function App() {
       setMessages(prev => 
         prev.map(m => m.id === assistantMessageId ? { ...m, content: fullContent, sources: [...sourcesList] } : m)
       );
-      const endTime = Date.now();
-      const genTime = endTime - startTime;
+      const perfEnd = performance.now();
+      const genTime = perfEnd - perfStart;
       
       setMessages(prev => 
         prev.map(m => m.id === assistantMessageId ? { ...m, generationTimeMs: genTime } : m)
@@ -507,6 +799,17 @@ export function App() {
             generationTimeMs: genTime
           });
         } catch (e) {}
+      }
+
+      // Asynchronous background memory extraction (Requirement 2, 11, 13)
+      if (user?.uid) {
+        runBackgroundMemoryExtraction(
+          trimmedText, 
+          fullContent, 
+          user.uid, 
+          memories, 
+          idToken
+        ).catch(e => console.warn("Background memory extraction error:", e));
       }
 
       if (isVoiceEnabled && fullContent) {
@@ -698,6 +1001,10 @@ export function App() {
     );
   }
 
+  if (!user) {
+    return <AuthScreen />;
+  }
+
   const currentSession = sessions.find(s => s.id === currentSessionId);
   const currentSessionTitle = currentSession?.title || 'New Conversation';
 
@@ -741,6 +1048,7 @@ export function App() {
           profileData={profileData}
           onOpenNotebook={() => setIsNotebookOpen(true)}
           notebookCount={notebookSnippets.length}
+          userCredits={userCredits}
         />
 
         {/* Messages Stream View */}
@@ -804,7 +1112,7 @@ export function App() {
                               className="flex items-center gap-2 bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-xs"
                             >
                               {att.type === 'image' && att.data ? (
-                                <img src={att.data} alt="uploaded" className="w-8 h-8 object-cover rounded" />
+                                <img src={att.data ? att.data : undefined} alt="uploaded" className="w-8 h-8 object-cover rounded" />
                               ) : (
                                 <FileCode size={14} className="text-blue-400" />
                               )}
@@ -816,118 +1124,135 @@ export function App() {
                         </div>
                       )}
 
-                      {/* Markdown text with customized code blocks */}
-                      <div className="prose prose-invert prose-sm max-w-none leading-relaxed break-words">
-                        <Markdown 
-                          remarkPlugins={[remarkGfm]}
-                          components={{
-                            code({ node, inline, className, children, ...props }: any) {
-                              const match = /language-(\w+)/.exec(className || '');
-                              const codeString = String(children).replace(/\n$/, '');
-                              const lang = match ? match[1] : '';
-                              const isRunnable = isCodeRunnable(lang, codeString);
+                      {/* Image Generation Loader or Standard Markdown text */}
+                      {msg.isImageGenerationLoading ? (
+                        <ImageGenerationLoader 
+                          prompt={msg.imagePrompt || ''}
+                          isEdit={msg.isEdit}
+                          perfStartTime={msg.perfStartTime}
+                        />
+                      ) : (
+                        <div className="prose prose-invert prose-sm max-w-none leading-relaxed break-words">
+                          <Markdown 
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                              img({ src, alt }: any) {
+                                if (!src) return null;
+                                return <ChatImageCard src={src} alt={alt || "INFBOTT AI Image"} />;
+                              },
+                              code({ node, inline, className, children, ...props }: any) {
+                                const match = /language-(\w+)/.exec(className || '');
+                                const codeString = String(children).replace(/\n$/, '');
+                                const lang = match ? match[1] : '';
+                                const isRunnable = isCodeRunnable(lang, codeString);
 
-                              if (lang === 'zip' || lang === 'schematic' || lang === 'nbt' || lang === 'schem') {
-                                const fileType = (lang === 'nbt' || lang === 'schem') ? 'schem' : lang;
-                                return (
-                                  <div className="my-3 rounded-lg border border-blue-500/20 bg-blue-500/5 overflow-hidden">
-                                    <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-blue-500/10 border-b border-blue-500/10">
-                                      <div className="flex items-center gap-2 text-xs font-semibold text-blue-400">
-                                        <Code size={14} />
-                                        Minecraft {fileType.toUpperCase()} Export
-                                      </div>
-                                      <button
-                                        onClick={() => handleDownloadMinecraftExport(codeString, fileType)}
-                                        className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded bg-blue-500 hover:bg-blue-400 text-white text-xs font-bold transition-colors shadow-sm ml-auto"
-                                      >
-                                        <span className="text-sm font-black leading-none">↓</span>
-                                        <span>Download .{fileType}</span>
-                                      </button>
-                                    </div>
-                                    <div className="p-3 text-xs font-mono text-[#a8c7fa] overflow-x-auto max-h-40 whitespace-pre-wrap">
-                                      {codeString.length > 500 ? `${codeString.substring(0, 500)}... (truncated for preview)` : codeString}
-                                    </div>
-                                  </div>
-                                );
-                              }
-
-                              if (!inline && (match || codeString.includes('\n'))) {
-                                return (
-                                  <div className="my-3 rounded-xl overflow-hidden border border-white/10 bg-[#0d1117] shadow-lg">
-                                    <div className="flex items-center justify-between px-3.5 py-2 bg-white/5 border-b border-white/10 text-xs text-[#8e918f]">
-                                      <div className="flex items-center gap-2">
-                                        <Code size={13} className="text-blue-400" />
-                                        <span className="font-mono uppercase font-bold text-[10px] text-white/70">
-                                          {lang || 'code'}
-                                        </span>
-                                      </div>
-
-                                      <div className="flex items-center gap-2">
-                                        {isRunnable && (
-                                          <button
-                                            onClick={() => handleRunCode(codeString, lang)}
-                                            className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-green-500/20 hover:bg-green-500/30 text-green-400 text-[11px] font-semibold transition-colors cursor-pointer"
-                                            title="Run interactive preview / play game"
-                                          >
-                                            <MonitorPlay size={12} />
-                                            <span>Run Game / Sandbox</span>
-                                          </button>
-                                        )}
-
+                                if (lang === 'zip' || lang === 'schematic' || lang === 'nbt' || lang === 'schem') {
+                                  const fileType = (lang === 'nbt' || lang === 'schem') ? 'schem' : lang;
+                                  return (
+                                    <div className="my-3 rounded-lg border border-blue-500/20 bg-blue-500/5 overflow-hidden">
+                                      <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-blue-500/10 border-b border-blue-500/10">
+                                        <div className="flex items-center gap-2 text-xs font-semibold text-blue-400">
+                                          <Code size={14} />
+                                          Minecraft {fileType.toUpperCase()} Export
+                                        </div>
                                         <button
-                                          onClick={() => {
-                                            navigator.clipboard.writeText(codeString);
-                                            setCopiedCodeIndex(`${mIdx}-${codeString.slice(0, 10)}`);
-                                            setTimeout(() => setCopiedCodeIndex(null), 2000);
-                                          }}
-                                          className="flex items-center gap-1 px-2 py-1 rounded-md bg-white/5 hover:bg-white/10 text-[#c4c7c5] hover:text-white text-[11px] transition-colors cursor-pointer"
-                                          title="Copy code"
+                                          onClick={() => handleDownloadMinecraftExport(codeString, fileType)}
+                                          className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded bg-blue-500 hover:bg-blue-400 text-white text-xs font-bold transition-colors shadow-sm ml-auto"
                                         >
-                                          {copiedCodeIndex === `${mIdx}-${codeString.slice(0, 10)}` ? (
-                                            <>
-                                              <Check size={12} className="text-green-400" />
-                                              <span className="text-green-400">Copied</span>
-                                            </>
-                                          ) : (
-                                            <>
-                                              <Copy size={12} />
-                                              <span>Copy</span>
-                                            </>
-                                          )}
+                                          <span className="text-sm font-black leading-none">↓</span>
+                                          <span>Download .{fileType}</span>
                                         </button>
                                       </div>
+                                      <div className="p-3 text-xs font-mono text-[#a8c7fa] overflow-x-auto max-h-40 whitespace-pre-wrap">
+                                        {codeString.length > 500 ? `${codeString.substring(0, 500)}... (truncated for preview)` : codeString}
+                                      </div>
                                     </div>
-                                    <div className="p-3.5 overflow-x-auto font-mono text-xs text-white/90 leading-relaxed custom-scrollbar">
-                                      <pre className="!m-0 !p-0 bg-transparent">
-                                        <code>{codeString}</code>
-                                      </pre>
+                                  );
+                                }
+
+                                if (!inline && (match || codeString.includes('\n'))) {
+                                  return (
+                                    <div className="my-3 rounded-xl overflow-hidden border border-white/10 bg-[#0d1117] shadow-lg">
+                                      <div className="flex items-center justify-between px-3.5 py-2 bg-white/5 border-b border-white/10 text-xs text-[#8e918f]">
+                                        <div className="flex items-center gap-2">
+                                          <Code size={13} className="text-blue-400" />
+                                          <span className="font-mono uppercase font-bold text-[10px] text-white/70">
+                                            {lang || 'code'}
+                                          </span>
+                                        </div>
+
+                                        <div className="flex items-center gap-2">
+                                          {isRunnable && (
+                                            <button
+                                              onClick={() => handleRunCode(codeString, lang)}
+                                              className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-green-500/20 hover:bg-green-500/30 text-green-400 text-[11px] font-semibold transition-colors cursor-pointer"
+                                              title="Run interactive preview / play game"
+                                            >
+                                              <MonitorPlay size={12} />
+                                              <span>Run Game / Sandbox</span>
+                                            </button>
+                                          )}
+
+                                          <button
+                                            onClick={() => {
+                                              navigator.clipboard.writeText(codeString);
+                                              setCopiedCodeIndex(`${mIdx}-${codeString.slice(0, 10)}`);
+                                              setTimeout(() => setCopiedCodeIndex(null), 2000);
+                                            }}
+                                            className="flex items-center gap-1 px-2 py-1 rounded-md bg-white/5 hover:bg-white/10 text-[#c4c7c5] hover:text-white text-[11px] transition-colors cursor-pointer"
+                                            title="Copy code"
+                                          >
+                                            {copiedCodeIndex === `${mIdx}-${codeString.slice(0, 10)}` ? (
+                                              <>
+                                                <Check size={12} className="text-green-400" />
+                                                <span className="text-green-400">Copied</span>
+                                              </>
+                                            ) : (
+                                              <>
+                                                <Copy size={12} />
+                                                <span>Copy</span>
+                                              </>
+                                            )}
+                                          </button>
+                                        </div>
+                                      </div>
+                                      <div className="p-3.5 overflow-x-auto font-mono text-xs text-white/90 leading-relaxed custom-scrollbar">
+                                        <pre className="!m-0 !p-0 bg-transparent">
+                                          <code>{codeString}</code>
+                                        </pre>
+                                      </div>
                                     </div>
-                                  </div>
+                                  );
+                                }
+
+                                return (
+                                  <code className="bg-white/10 px-1.5 py-0.5 rounded text-amber-300 font-mono text-xs" {...props}>
+                                    {children}
+                                  </code>
                                 );
                               }
+                            }}
+                          >
+                            {msg.content}
+                          </Markdown>
+                        </div>
+                      )}
 
-                              return (
-                                <code className="bg-white/10 px-1.5 py-0.5 rounded text-amber-300 font-mono text-xs" {...props}>
-                                  {children}
-                                </code>
-                              );
-                            }
-                          }}
-                        >
-                          {msg.content}
-                        </Markdown>
-                      </div>
-
-                      {/* Loading Status - Numbers Only */}
-                      {isLoading && msg.role === 'assistant' && mIdx === messages.length - 1 && (
+                      {/* Loading Status - Numbers Only for text chat */}
+                      {isLoading && msg.role === 'assistant' && !msg.isImageGenerationLoading && mIdx === messages.length - 1 && (
                         <div className="mt-4 pt-3 border-t border-white/5">
                           <div className="flex items-center justify-between">
                             <span className="text-[10px] font-medium text-[#4285f4] uppercase tracking-wider flex items-center gap-1.5">
                               <Sparkles size={10} className="animate-pulse" />
                               Generating response...
                             </span>
-                            <span className="text-[12px] font-bold text-[#4285f4] font-mono">
-                              {Math.min(99, Math.max(1, Math.floor((msg.content.length / (msg.content.length + 300)) * 100)))}%
+                            <span className="text-[12px] font-bold text-[#4285f4] font-mono flex items-center gap-2">
+                              {msg.perfStartTime && (
+                                <span className="opacity-70 text-[10px]">
+                                  <GenerationTimer perfStartTime={msg.perfStartTime} />
+                                </span>
+                              )}
+                              <span>{Math.min(99, Math.max(5, msg.perfStartTime ? Math.min(95, Math.floor(((performance.now() - msg.perfStartTime) / 2500) * 90) + 10) : Math.floor((msg.content.length / (msg.content.length + 300)) * 100)))}%</span>
                             </span>
                           </div>
                         </div>
@@ -954,6 +1279,43 @@ export function App() {
                               </a>
                             ))}
                           </div>
+                        </div>
+                      )}
+
+                      {/* Assistant Response Footer: Generation Time & Estimated Reading Time */}
+                      {msg.role === 'assistant' && msg.content && (!isLoading || mIdx !== messages.length - 1) && (
+                        <div className="mt-3 pt-2.5 border-t border-white/5 flex items-center justify-between text-[11px] text-[#8e918f] select-none">
+                          <div className="flex items-center gap-3">
+                            {msg.generationTimeMs !== undefined && (
+                              <span className="flex items-center gap-1 font-mono text-[#4285f4] font-medium" title="AI Generation Latency">
+                                <Zap size={11} className="text-[#4285f4]" />
+                                <span>
+                                  {msg.generationTimeMs >= 1000 
+                                    ? `${(msg.generationTimeMs / 1000).toFixed(2)}s` 
+                                    : `${Math.round(msg.generationTimeMs)}ms`}
+                                </span>
+                              </span>
+                            )}
+
+                            <span className="flex items-center gap-1 text-[#8e918f]" title="Estimated Reading Time">
+                              <BookOpen size={11} className="text-emerald-400" />
+                              <span>{calculateReadingTime(msg.content).formatted}</span>
+                            </span>
+                          </div>
+
+                          {msg.timestamp && (
+                            <span className="flex items-center gap-1 text-[10px] text-white/40">
+                              <Clock size={10} className="text-white/30" />
+                              <span>{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* User Message Footer: Timestamp */}
+                      {msg.role === 'user' && msg.timestamp && (
+                        <div className="mt-2 text-right text-[10px] text-white/40 select-none">
+                          {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </div>
                       )}
 
@@ -1068,6 +1430,7 @@ export function App() {
           handleAction={handleAction}
           handleSummarizeChat={handleSummarizeChat}
           setIsFeedbackModalOpen={setIsFeedbackModalOpen}
+          currentSessionId={currentSessionId}
         />
       </main>
 
@@ -1114,6 +1477,9 @@ export function App() {
         user={user}
         profileData={profileData}
         setProfileData={setProfileData}
+        memories={memories}
+        onDeleteMemory={handleDeleteMemory}
+        onClearAllMemories={handleClearAllMemories}
         onSignOut={async () => {
           await signOut(auth);
           setIsProfileModalOpen(false);

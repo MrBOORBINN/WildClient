@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Menu, FileText, Cloud, CheckCircle2, Download, Highlighter } from 'lucide-react';
+import { Menu, FileText, Cloud, CheckCircle2, Download, Highlighter, Zap } from 'lucide-react';
 import { ModelSelector } from './Sidebar';
 import { ModelType } from '../services/geminiService';
 import { cn } from '../lib/utils';
@@ -21,6 +21,7 @@ interface HeaderProps {
   profileData: any;
   onOpenNotebook?: () => void;
   notebookCount?: number;
+  userCredits?: number;
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -37,7 +38,8 @@ const Header: React.FC<HeaderProps> = ({
   setIsProfileModalOpen,
   profileData,
   onOpenNotebook,
-  notebookCount = 0
+  notebookCount = 0,
+  userCredits = 70
 }) => {
   const [syncStatus, setSyncStatus] = useState<'syncing' | 'synced'>('synced');
 
@@ -49,24 +51,12 @@ const Header: React.FC<HeaderProps> = ({
     }
   }, [messages.length]);
 
-  const handleExportPDF = () => {
-    if (!messages || messages.length === 0) {
-      alert('Start a conversation to export your chat history as PDF.');
-      return;
-    }
-    exportConversationToPDF(
-      currentSessionTitle,
-      messages,
-      profileData?.fullName || 'User'
-    );
-  };
-
   return (
     <header className="h-14 flex items-center justify-between px-3 sm:px-5 border-b border-white/5 bg-[#131314]/80 backdrop-blur-md sticky top-0 z-30">
       <div className="flex items-center gap-2 sm:gap-3">
         <button 
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-          className="p-2 hover:bg-white/10 rounded-xl transition-colors text-[#c4c7c5] hover:text-white"
+          className="p-2 hover:bg-white/10 rounded-xl transition-colors text-[#c4c7c5] hover:text-white cursor-pointer"
           title="Toggle Sidebar"
         >
           <Menu size={18} />
@@ -91,11 +81,18 @@ const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      <div className="flex items-center gap-1.5 sm:gap-2.5">
+      <div className="flex items-center gap-2 sm:gap-3">
+        {/* Credit Count Badge on Top Right */}
+        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 font-bold text-xs shadow-inner">
+          <Zap size={14} className="animate-pulse" />
+          <span className="font-mono">{userCredits} Credits</span>
+        </div>
+
         {/* Profile Avatar Button */}
         <button 
           onClick={() => setIsProfileModalOpen(true)}
-          className="w-8 h-8 rounded-full bg-gradient-to-br from-[#ff4e00] to-[#ff0080] flex items-center justify-center text-xs font-bold shadow-lg hover:scale-105 transition-transform overflow-hidden shrink-0 ml-1 border border-white/10"
+          className="w-8 h-8 rounded-full bg-gradient-to-br from-[#ff4e00] to-[#ff0080] flex items-center justify-center text-xs font-bold shadow-lg hover:scale-105 transition-transform overflow-hidden shrink-0 border border-white/10 cursor-pointer"
+          title="Profile & Settings"
         >
           {profileData?.avatarUrl ? (
             <img src={profileData.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />

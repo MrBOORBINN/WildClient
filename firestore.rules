@@ -81,6 +81,20 @@ service cloud.firestore {
              request.resource.data.type is string;
     }
 
+    function isValidMemory() {
+      return hasRequiredFields(['user_id', 'memory', 'category', 'importance', 'confidence']) &&
+             request.resource.data.user_id == request.auth.uid &&
+             request.resource.data.memory is string &&
+             request.resource.data.memory.size() <= 1000 &&
+             request.resource.data.category in ['preference', 'project', 'skill', 'workflow', 'other'] &&
+             request.resource.data.importance is number &&
+             request.resource.data.importance >= 0 &&
+             request.resource.data.importance <= 100 &&
+             request.resource.data.confidence is number &&
+             request.resource.data.confidence >= 0 &&
+             request.resource.data.confidence <= 100;
+    }
+
     match /users/{userId} {
       allow read: if isOwner(userId);
       allow create: if isOwner(userId) && isValidUser();
@@ -112,6 +126,13 @@ service cloud.firestore {
       allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid && request.resource.data.text is string;
       allow update: if isAuthenticated() && resource.data.userId == request.auth.uid && request.resource.data.userId == request.auth.uid;
       allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
+    match /memories/{memoryId} {
+      allow read: if isAuthenticated() && resource.data.user_id == request.auth.uid;
+      allow create: if isAuthenticated() && isValidMemory();
+      allow update: if isAuthenticated() && resource.data.user_id == request.auth.uid && isValidMemory();
+      allow delete: if isAuthenticated() && resource.data.user_id == request.auth.uid;
     }
   }
 }
