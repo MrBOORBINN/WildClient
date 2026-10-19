@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Menu, FileText, Cloud, CheckCircle2, Download, Highlighter, Zap } from 'lucide-react';
+import { Menu, FileText, Cloud, CheckCircle2, Download, Highlighter, Zap, Mic } from 'lucide-react';
 import { ModelSelector } from './Sidebar';
 import { ModelType } from '../services/geminiService';
 import { cn } from '../lib/utils';
@@ -22,6 +22,8 @@ interface HeaderProps {
   onOpenNotebook?: () => void;
   notebookCount?: number;
   userCredits?: number;
+  onOpenLiveVoice?: () => void;
+  isLiveVoiceOpen?: boolean;
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -39,7 +41,9 @@ const Header: React.FC<HeaderProps> = ({
   profileData,
   onOpenNotebook,
   notebookCount = 0,
-  userCredits = 70
+  userCredits = 70,
+  onOpenLiveVoice,
+  isLiveVoiceOpen = false
 }) => {
   const [syncStatus, setSyncStatus] = useState<'syncing' | 'synced'>('synced');
 
@@ -82,6 +86,25 @@ const Header: React.FC<HeaderProps> = ({
       </div>
 
       <div className="flex items-center gap-2 sm:gap-3">
+        {/* Live Voice Button in Header */}
+        {onOpenLiveVoice && (
+          <button
+            type="button"
+            onClick={onOpenLiveVoice}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border cursor-pointer shadow-sm active:scale-95",
+              isLiveVoiceOpen
+                ? "bg-purple-600 text-white border-purple-400 shadow-purple-500/20"
+                : "bg-white/5 hover:bg-white/10 text-white/90 hover:text-white border-white/10"
+            )}
+            title="Start Real-Time Live Voice Conversation"
+            aria-label="Live Voice"
+          >
+            <Mic size={14} className={cn(isLiveVoiceOpen ? "text-white animate-pulse" : "text-purple-400")} />
+            <span className="hidden sm:inline">Live Voice</span>
+          </button>
+        )}
+
         {/* Credit Count Badge on Top Right */}
         <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 font-bold text-xs shadow-inner">
           <Zap size={14} className="animate-pulse" />

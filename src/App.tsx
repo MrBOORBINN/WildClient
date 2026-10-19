@@ -1,5 +1,5 @@
 import { GenerationTimer } from './components/GenerationTimer';
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   Menu, 
   Plus, 
@@ -47,7 +47,10 @@ import {
   getChatResponseStream, 
   ModelType, 
   summarizeContent, 
-  generateChatTitle 
+  generateChatTitle,
+  diagnoseImageGenerationEndpoint,
+  editImage,
+  generateImage
 } from './services/geminiService';
 import { 
   collection, 
@@ -97,6 +100,8 @@ import CloudConsole from './components/CloudConsole';
 import ProfileModal from './components/ProfileModal';
 import { ImageGenerationLoader } from './components/ImageGenerationLoader';
 import { ChatImageCard } from './components/ChatImageCard';
+import { ImageGalleryModal, GalleryImage } from './components/ImageGalleryModal';
+import { LiveVoiceModal } from './components/LiveVoiceModal';
 
 // Helper function to handle downloading Minecraft schematic/NBT data
 const handleDownloadMinecraftExport = (content: string, type: string) => {
@@ -200,9 +205,113 @@ export function App() {
       id: `assistant-img-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
       role: 'assistant',
       content: `Here is the AI generated image for prompt: "${prompt}"\n\n![AI Generated Image](${imageUrl})`,
+      imageUrl: imageUrl,
+      imagePrompt: prompt,
       timestamp: Date.now()
     };
     setMessages(prev => [...prev, imageMessage]);
+  };
+
+  // Image Gallery & Watermark State
+  const [isGalleryOpen, setIsGalleryOpen] = useState(false);
+
+  // Aggregated session images for Gallery Modal
+  const sessionImages: GalleryImage[] = useMemo(() => {
+    const list: GalleryImage[] = [];
+    messages.forEach(m => {
+      if (m.imageUrl) {
+        list.push({
+          id: m.id,
+          url: m.imageUrl,
+          prompt: m.imagePrompt || (typeof m.content === 'string' ? m.content.slice(0, 90) : 'Generated Image'),
+          timestamp: m.timestamp,
+          isEdit: m.isEdit
+        });
+      }
+      if (m.attachments) {
+        m.attachments.forEach((att, idx) => {
+          if (att.type === 'image' && att.data) {
+            list.push({
+              id: `${m.id}-att-${idx}`,
+              url: att.data,
+              prompt: att.name || 'Uploaded image',
+              timestamp: m.timestamp
+            });
+          }
+        });
+      }
+      if (typeof m.content === 'string') {
+        const mdMatches = [...m.content.matchAll(/!\[(.*?)\]\(((?:data:image\/|https?:\/\/)[^)]+)\)/g)];
+        mdMatches.forEach((match, idx) => {
+          const url = match[2];
+          if (!list.some(item => item.url === url)) {
+            list.push({
+              id: `${m.id}-md-${idx}`,
+              url: url,
+              prompt: match[1] || m.imagePrompt || 'Session Image',
+              timestamp: m.timestamp
+            });
+          }
+        });
+      }
+    });
+    return list;
+  }, [messages]);
+
+  const handleRegenerateImage = (promptText: string) => {
+    if (!promptText || isLoading) return;
+    setInput(promptText);
+    handleSend(promptText);
+  };
+
+  const handleUseAsWatermark = (imageUrl: string) => {
+    if (isLoading) return;
+    const watermarkAttachment: Attachment = {
+      type: 'image',
+      data: imageUrl,
+      name: 'watermark_image.png',
+      mimeType: imageUrl.startsWith('data:image/png') ? 'image/png' : 'image/jpeg'
+    };
+    setAttachments([watermarkAttachment]);
+    setInput('Use this as watermark');
+    handleSend('Use this as watermark');
+  };
+
+  // Real-Time Live Voice Conversation
+  const [isLiveVoiceOpen, setIsLiveVoiceOpen] = useState(false);
+  const [userIdToken, setUserIdToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (user) {
+      user.getIdToken().then(setUserIdToken).catch(() => setUserIdToken(null));
+    } else {
+      setUserIdToken(null);
+    }
+  }, [user]);
+
+  const liveVoiceHistory = useMemo(() => {
+    return messages.slice(-12).map(m => ({
+      role: m.role,
+      content: typeof m.content === 'string' ? m.content : ''
+    }));
+  }, [messages]);
+
+  const handleLiveVoiceMessageLogged = (userText: string, assistantText: string) => {
+    if (!userText.trim() && !assistantText.trim()) return;
+    const now = Date.now();
+    const userMsg: Message = {
+      id: `user-voice-${now}-${Math.random().toString(36).substr(2, 6)}`,
+      role: 'user',
+      content: userText,
+      timestamp: now
+    };
+    const assistantMsg: Message = {
+      id: `assistant-voice-${now + 1}-${Math.random().toString(36).substr(2, 6)}`,
+      role: 'assistant',
+      content: assistantText,
+      timestamp: now + 1
+    };
+    setMessages(prev => [...prev, userMsg, assistantMsg]);
   };
 
   // Code & Game Runner Preview Sandbox
@@ -536,6 +645,28 @@ export function App() {
       return;
     }
 
+    // 1b. Check for Creator / Owner question
+    const creatorRegex = /^(who\s+(created|made|built|developed|owns?|is\s+(the\s+)?creator\s+of|is\s+(the\s+)?owner\s+of)\s+(you|infbott|this\s+ai|this\s+bot|this\s+app)|who\s+is\s+(your\s+)?(owner|creator|maker|developer)|who\s+owns?\s+you|who\s+created\s+you\??|who\s+is\s+owner\??)$/i;
+    if (creatorRegex.test(trimmedText) || /who\s+(created|is\s+(the\s+)?owner\s+of)\s+you/i.test(trimmedText) || trimmedText.toLowerCase() === 'who is owner' || trimmedText.toLowerCase() === 'who is your owner' || trimmedText.toLowerCase() === 'who created you') {
+      const userMsg: Message = {
+        id: `user-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+        role: 'user',
+        content: trimmedText,
+        attachments: [...attachments],
+        timestamp: Date.now()
+      };
+      const assistantMsg: Message = {
+        id: `assistant-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+        role: 'assistant',
+        content: 'Duckeyy/Ravi Create Me to make users life easy',
+        timestamp: Date.now()
+      };
+      setMessages(prev => [...prev, userMsg, assistantMsg]);
+      setInput('');
+      setAttachments([]);
+      return;
+    }
+
     // Check for automatic image generation or editing intent
     let targetImage = attachments.find(a => a.type === 'image' && a.data);
 
@@ -543,6 +674,15 @@ export function App() {
     if (!targetImage) {
       for (let i = messages.length - 1; i >= Math.max(0, messages.length - 8); i--) {
         const msg = messages[i];
+        if (msg.imageUrl) {
+          targetImage = {
+            type: 'image',
+            data: msg.imageUrl,
+            name: msg.imagePrompt || 'Previous Image',
+            mimeType: 'image/png'
+          };
+          break;
+        }
         if (msg.attachments && msg.attachments.length > 0) {
           const imgAtt = msg.attachments.find(a => a.type === 'image' && a.data);
           if (imgAtt) {
@@ -569,7 +709,9 @@ export function App() {
     const imageIntentRegex = /^(create|generate|make|draw|paint|produce|render)\s+(an?\s+)?(image|picture|photo|artwork|illustration|logo|avatar|banner)/i;
     const isImageIntent = imageIntentRegex.test(trimmedText) || trimmedText.toLowerCase().includes('generate an image') || trimmedText.toLowerCase().includes('create an image') || trimmedText.toLowerCase().includes('make a picture');
     const editKeywordsRegex = /(edit|change|remove|delete|clean|replace|modify|update|adjust|enhance|fix|watermark|background|crop|colour|color|reconstruct|keep|filter|grayscale|sepia|contrast|saturate|tint|add|brighten|darken|invert|turn)/i;
-    const isImageEditIntent = hasImageAttachment && (editKeywordsRegex.test(trimmedText) || (attachments.length > 0 && attachments.some(a => a.type === 'image')));
+    // Real separation: Only treat as image edit if explicit edit keywords are present.
+    // Otherwise, uploaded image proceeds to Vision Analysis for description, visual Q&A, and OCR.
+    const isImageEditIntent = hasImageAttachment && editKeywordsRegex.test(trimmedText);
 
     if (isImageIntent || isImageEditIntent) {
       if (userCredits < 10) {
@@ -611,21 +753,20 @@ export function App() {
 
       try {
         const idToken = user ? await user.getIdToken().catch(() => null) : null;
-        const response = await fetch('/api/generate-image', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(idToken ? { 'Authorization': `Bearer ${idToken}` } : {})
-          },
-          body: JSON.stringify({
+        let data: { imageUrl: string; creditsRemaining?: number; cost?: number; isEdit?: boolean };
+
+        if (isImageEditIntent && targetImage) {
+          data = await editImage({
+            prompt: trimmedText,
+            image: targetImage,
+            idToken
+          });
+        } else {
+          data = await generateImage({
             prompt: trimmedText,
             provider: 'auto',
-            image: targetImage
-          })
-        });
-        const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data.error || (isImageEditIntent ? "Sorry, I couldn't edit this image. Please try again." : "Image generation failed"));
+            idToken
+          });
         }
         if (data.imageUrl) {
           const successMsg: Message = {
@@ -634,6 +775,8 @@ export function App() {
             content: isImageEditIntent
               ? `Here is your edited image according to your instructions: "${trimmedText}"\n\n![Edited Image](${data.imageUrl})`
               : `Here is your generated image for prompt: "${trimmedText}"\n\n![Generated Image](${data.imageUrl})`,
+            imageUrl: data.imageUrl,
+            imagePrompt: trimmedText,
             timestamp: Date.now()
           };
           setMessages(prev => prev.map(m => m.id === loadingMsgId ? successMsg : m));
@@ -1049,6 +1192,8 @@ export function App() {
           onOpenNotebook={() => setIsNotebookOpen(true)}
           notebookCount={notebookSnippets.length}
           userCredits={userCredits}
+          onOpenLiveVoice={() => setIsLiveVoiceOpen(prev => !prev)}
+          isLiveVoiceOpen={isLiveVoiceOpen}
         />
 
         {/* Messages Stream View */}
@@ -1135,10 +1280,42 @@ export function App() {
                         <div className="prose prose-invert prose-sm max-w-none leading-relaxed break-words">
                           <Markdown 
                             remarkPlugins={[remarkGfm]}
+                            urlTransform={(url) => url}
                             components={{
+                              p({ children }: any) {
+                                return <div className="mb-3 leading-relaxed last:mb-0">{children}</div>;
+                              },
                               img({ src, alt }: any) {
                                 if (!src) return null;
-                                return <ChatImageCard src={src} alt={alt || "INFBOTT AI Image"} />;
+                                return (
+                                  <ChatImageCard 
+                                    src={src} 
+                                    alt={alt || "INFBOTT AI Image"} 
+                                    prompt={msg.imagePrompt || alt}
+                                    onRegenerate={handleRegenerateImage}
+                                    onOpenGallery={() => setIsGalleryOpen(true)}
+                                    onUseAsWatermark={handleUseAsWatermark}
+                                  />
+                                );
+                              },
+                              a({ href, children }: any) {
+                                if (href && (href.startsWith('data:image/') || href.startsWith('https://image.pollinations.ai/') || /\.(png|jpe?g|webp|gif|svg)($|\?)/i.test(href))) {
+                                  return (
+                                    <ChatImageCard 
+                                      src={href} 
+                                      alt={String(children) || "INFBOTT AI Image"} 
+                                      prompt={msg.imagePrompt || String(children)}
+                                      onRegenerate={handleRegenerateImage}
+                                      onOpenGallery={() => setIsGalleryOpen(true)}
+                                      onUseAsWatermark={handleUseAsWatermark}
+                                    />
+                                  );
+                                }
+                                return (
+                                  <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-400 underline hover:text-blue-300">
+                                    {children}
+                                  </a>
+                                );
                               },
                               code({ node, inline, className, children, ...props }: any) {
                                 const match = /language-(\w+)/.exec(className || '');
@@ -1233,8 +1410,22 @@ export function App() {
                               }
                             }}
                           >
-                            {msg.content}
+                            {msg.content || ''}
                           </Markdown>
+
+                          {/* Direct image render fallback if not already rendered inside Markdown */}
+                          {msg.imageUrl && !(typeof msg.content === 'string' && msg.content.includes(msg.imageUrl)) && (
+                            <div className="mt-3">
+                              <ChatImageCard 
+                                src={msg.imageUrl} 
+                                alt={msg.imagePrompt || "INFBOTT AI Image"} 
+                                prompt={msg.imagePrompt}
+                                onRegenerate={handleRegenerateImage}
+                                onOpenGallery={() => setIsGalleryOpen(true)}
+                                onUseAsWatermark={handleUseAsWatermark}
+                              />
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -1252,7 +1443,7 @@ export function App() {
                                   <GenerationTimer perfStartTime={msg.perfStartTime} />
                                 </span>
                               )}
-                              <span>{Math.min(99, Math.max(5, msg.perfStartTime ? Math.min(95, Math.floor(((performance.now() - msg.perfStartTime) / 2500) * 90) + 10) : Math.floor((msg.content.length / (msg.content.length + 300)) * 100)))}%</span>
+                              <span>{Math.min(99, Math.max(5, msg.perfStartTime ? Math.min(95, Math.floor(((performance.now() - msg.perfStartTime) / 2500) * 90) + 10) : Math.floor(((typeof msg.content === 'string' ? msg.content.length : 0) / ((typeof msg.content === 'string' ? msg.content.length : 0) + 300)) * 100)))}%</span>
                             </span>
                           </div>
                         </div>
@@ -1283,7 +1474,7 @@ export function App() {
                       )}
 
                       {/* Assistant Response Footer: Generation Time & Estimated Reading Time */}
-                      {msg.role === 'assistant' && msg.content && (!isLoading || mIdx !== messages.length - 1) && (
+                      {msg.role === 'assistant' && (msg.content || msg.imageUrl) && (!isLoading || mIdx !== messages.length - 1) && (
                         <div className="mt-3 pt-2.5 border-t border-white/5 flex items-center justify-between text-[11px] text-[#8e918f] select-none">
                           <div className="flex items-center gap-3">
                             {msg.generationTimeMs !== undefined && (
@@ -1299,7 +1490,7 @@ export function App() {
 
                             <span className="flex items-center gap-1 text-[#8e918f]" title="Estimated Reading Time">
                               <BookOpen size={11} className="text-emerald-400" />
-                              <span>{calculateReadingTime(msg.content).formatted}</span>
+                              <span>{calculateReadingTime(msg.content || '').formatted}</span>
                             </span>
                           </div>
 
@@ -1326,7 +1517,7 @@ export function App() {
                       )}>
                         <button 
                           onClick={() => {
-                            navigator.clipboard.writeText(msg.content);
+                            navigator.clipboard.writeText(msg.content || msg.imageUrl || '');
                             setCopiedId(msg.id);
                             setTimeout(() => setCopiedId(null), 2000);
                           }}
@@ -1431,6 +1622,8 @@ export function App() {
           handleSummarizeChat={handleSummarizeChat}
           setIsFeedbackModalOpen={setIsFeedbackModalOpen}
           currentSessionId={currentSessionId}
+          onOpenLiveVoice={() => setIsLiveVoiceOpen(prev => !prev)}
+          isLiveVoiceOpen={isLiveVoiceOpen}
         />
       </main>
 
@@ -1493,6 +1686,21 @@ export function App() {
       <CloudConsole 
         isOpen={isCloudConsoleOpen}
         onClose={() => setIsCloudConsoleOpen(false)}
+      />
+
+      <ImageGalleryModal
+        isOpen={isGalleryOpen}
+        onClose={() => setIsGalleryOpen(false)}
+        images={sessionImages}
+        onRegenerate={handleRegenerateImage}
+      />
+
+      <LiveVoiceModal
+        isOpen={isLiveVoiceOpen}
+        onClose={() => setIsLiveVoiceOpen(false)}
+        idToken={userIdToken}
+        history={liveVoiceHistory}
+        onMessageLogged={handleLiveVoiceMessageLogged}
       />
     </div>
   );

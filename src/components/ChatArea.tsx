@@ -135,8 +135,20 @@ const ChatArea = ({
                   <div className="prose prose-invert prose-sm max-w-none leading-relaxed">
                     <Markdown 
                       remarkPlugins={[remarkGfm]}
+                      urlTransform={(url) => url}
                       components={{
+                        p: ({ children }: any) => <div className="mb-3 leading-relaxed last:mb-0">{children}</div>,
                         img: ({ node, ...props }: any) => props.src ? <ChatImageCard src={props.src} alt={props.alt || "INFBOTT Image"} /> : null,
+                        a: ({ href, children }: any) => {
+                          if (href && (href.startsWith('data:image/') || href.startsWith('https://image.pollinations.ai/') || /\.(png|jpe?g|webp|gif|svg)($|\?)/i.test(href))) {
+                            return <ChatImageCard src={href} alt={String(children) || "INFBOTT Image"} />;
+                          }
+                          return (
+                            <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-400 underline hover:text-blue-300">
+                              {children}
+                            </a>
+                          );
+                        },
                         code: ({ node, inline, className, children, ...props }: any) => {
                           const match = /language-(\w+)/.exec(className || '');
                           const language = match ? match[1].toLowerCase() : '';

@@ -234,7 +234,8 @@ CORE CAPABILITIES & TECHNICAL RULES:
 6. MINECRAFT EXPERTISE & GENERATION: You specialize in Minecraft-related creation: generating code for Minecraft mods, datapacks, command blocks, schematics (WorldEdit/Litematica), 3D models (Blockbench JSON), and working with Minecraft world data.
 IMPORTANT: When asked to export or generate a Minecraft schematic, you MUST output the raw Base64 encoded binary data or the raw string data inside a Markdown code block with the language set to exactly "zip" or "schematic" (e.g. \`\`\`zip ... \`\`\` or \`\`\`schematic ... \`\`\`). The UI will automatically parse these blocks and provide a download button to the user.
 7. INTELLIGENT TASK AGENT: For complex multi-step problems, follow a structured approach: UNDERSTAND → PLAN → EXECUTE → VERIFY → RESPOND. Explain your step-by-step logic clearly when helpful.
-8. IMAGE EDITING & PIXEL MANIPULATION: INFBOTT contains a built-in image editing and pixel manipulation engine. You NEVER claim that you cannot modify image pixels, save files, or execute edits. Never offer Python scripts, external colorizer websites, or SVG alternatives when the user asks to edit an image.`;
+8. IMAGE EDITING & PIXEL MANIPULATION: INFBOTT contains a built-in image editing and pixel manipulation engine. You NEVER claim that you cannot modify image pixels, save files, or execute edits. Never offer Python scripts, external colorizer websites, or SVG alternatives when the user asks to edit an image.
+9. CREATOR & OWNER IDENTITY: If anyone asks who created you, who is your owner, who made you, who built you, or any question about your developer or owner, you MUST ALWAYS answer: "Duckeyy/Ravi Create Me to make users life easy".`;
 
 
 async function startServer() {
@@ -573,6 +574,127 @@ Assistant reply: ${(assistantResponse || '').slice(0, 400)}`;
     }
   });
 
+  // Helper to convert an uploaded logo or image into a clean, transparent watermark stamp
+  async function convertToWatermark(inputBuffer: Buffer, promptText: string): Promise<Buffer> {
+    const p = promptText.toLowerCase();
+    const meta = await sharp(inputBuffer).metadata();
+    const w = meta.width || 800;
+    const h = meta.height || 800;
+
+    const { data, info } = await sharp(inputBuffer)
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+
+    // Sample corner pixels to auto-detect background color
+    const cornerIndices = [
+      0,
+      (info.width - 1) * 4,
+      ((info.height - 1) * info.width) * 4,
+      ((info.height - 1) * info.width + (info.width - 1)) * 4
+    ];
+
+    let avgR = 0, avgG = 0, avgB = 0;
+    for (const idx of cornerIndices) {
+      avgR += data[idx];
+      avgG += data[idx + 1];
+      avgB += data[idx + 2];
+    }
+    avgR = Math.round(avgR / 4);
+    avgG = Math.round(avgG / 4);
+    avgB = Math.round(avgB / 4);
+
+    const isLightBg = avgR > 180 && avgG > 180 && avgB > 180;
+    const isDarkBg = avgR < 50 && avgG < 50 && avgB < 50;
+    const colorTolerance = 50;
+    const opacityFactor = p.includes('faint') || p.includes('subtle') ? 0.38 : 0.65;
+
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      const distFromBg = Math.sqrt(
+        Math.pow(r - avgR, 2) + Math.pow(g - avgG, 2) + Math.pow(b - avgB, 2)
+      );
+
+      if ((isLightBg || isDarkBg) && distFromBg < colorTolerance) {
+        // Strip solid background to full transparency
+        data[i + 3] = 0;
+      } else {
+        // Foreground graphic: modulate alpha for authentic watermark translucency
+        data[i + 3] = Math.round(data[i + 3] * opacityFactor);
+      }
+    }
+
+    return await sharp(data, {
+      raw: { width: info.width, height: info.height, channels: 4 }
+    })
+    .png()
+    .toBuffer();
+  }
+
+  // Helper to add a modern, sleek watermark badge or overlay onto an image
+  async function addWatermarkToImage(inputBuffer: Buffer, promptText: string): Promise<Buffer> {
+    const p = promptText.toLowerCase();
+    const meta = await sharp(inputBuffer).metadata();
+    const w = meta.width || 1024;
+    const h = meta.height || 1024;
+
+    let watermarkText = "INFBOTT";
+    const customMatch = promptText.match(/(?:saying|text|word|labeled|named|with text|marked)\s+["']?([^"'\n,]+)["']?/i);
+    if (customMatch && customMatch[1]) {
+      watermarkText = customMatch[1].trim();
+    }
+
+    const isDiagonal = p.includes("diagonal") || p.includes("across") || p.includes("center");
+    const isBottomLeft = p.includes("bottom-left") || p.includes("bottom left");
+    const isTopRight = p.includes("top-right") || p.includes("top right");
+    const isTopLeft = p.includes("top-left") || p.includes("top left");
+
+    let svgOverlay = "";
+    if (isDiagonal) {
+      const fontSize = Math.max(24, Math.round(w * 0.065));
+      svgOverlay = `
+        <svg width="${w}" height="${h}">
+          <text x="${w / 2}" y="${h / 2}" font-family="system-ui, -apple-system, sans-serif" font-size="${fontSize}" font-weight="bold" fill="rgba(255,255,255,0.28)" text-anchor="middle" transform="rotate(-30, ${w / 2}, ${h / 2})" letter-spacing="3">${watermarkText.toUpperCase()}</text>
+        </svg>
+      `;
+    } else {
+      const fontSize = Math.max(14, Math.round(w * 0.026));
+      const badgeW = Math.round(Math.max(fontSize * (watermarkText.length * 0.65 + 3.5), 140));
+      const badgeH = Math.round(fontSize * 2.2);
+      const pad = Math.round(w * 0.03);
+
+      let x = w - badgeW - pad;
+      let y = h - badgeH - pad;
+
+      if (isBottomLeft) {
+        x = pad;
+        y = h - badgeH - pad;
+      } else if (isTopRight) {
+        x = w - badgeW - pad;
+        y = pad;
+      } else if (isTopLeft) {
+        x = pad;
+        y = pad;
+      }
+
+      svgOverlay = `
+        <svg width="${w}" height="${h}">
+          <g transform="translate(${x}, ${y})">
+            <rect width="${badgeW}" height="${badgeH}" rx="${badgeH / 2}" fill="rgba(0,0,0,0.52)" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+            <text x="${badgeW / 2}" y="${badgeH / 2 + fontSize * 0.35}" font-family="system-ui, -apple-system, sans-serif" font-size="${fontSize}" font-weight="600" fill="rgba(255,255,255,0.92)" text-anchor="middle" letter-spacing="1.2">${watermarkText.toUpperCase()}</text>
+          </g>
+        </svg>
+      `;
+    }
+
+    return await sharp(inputBuffer)
+      .composite([{ input: Buffer.from(svgOverlay), top: 0, left: 0 }])
+      .png()
+      .toBuffer();
+  }
+
   // Helper to remove watermarks cleanly from images while preserving original artwork
   async function removeWatermark(inputBuffer: Buffer, promptText: string): Promise<Buffer> {
     const metadata = await sharp(inputBuffer).metadata();
@@ -626,13 +748,50 @@ Assistant reply: ${(assistantResponse || '').slice(0, 400)}`;
       .toBuffer();
   }
 
-  // Helper to apply image adjustments/watermark removal on uploaded image
+  // Helper to apply image adjustments/watermark operations on uploaded image
   async function applyImageEdits(inputBuffer: Buffer, promptText: string): Promise<Buffer | null> {
     const p = promptText.toLowerCase();
 
-    // Watermark removal
-    if (p.includes('watermark') || (p.includes('logo') && (p.includes('remove') || p.includes('delete') || p.includes('clean')))) {
+    // 1. Watermark creation / conversion: "use this as watermark", "make watermark", "convert to watermark", "transparent watermark", etc.
+    const isConvertToWatermark = 
+      p.includes('use this as watermark') ||
+      p.includes('use as watermark') ||
+      p.includes('convert to watermark') ||
+      p.includes('make watermark') ||
+      p.includes('make this a watermark') ||
+      p.includes('create watermark') ||
+      p.includes('transparent watermark') ||
+      p.includes('watermark stamp') ||
+      p.includes('turn into watermark') ||
+      p.includes('turn this into a watermark') ||
+      (p.includes('as watermark') && !p.includes('remove'));
+
+    if (isConvertToWatermark) {
+      return await convertToWatermark(inputBuffer, promptText);
+    }
+
+    // 2. Watermark removal: ONLY when explicit removal verbs are present
+    const isWatermarkRemoval =
+      (p.includes('watermark') && (p.includes('remove') || p.includes('delete') || p.includes('clean') || p.includes('clear') || p.includes('erase') || p.includes('strip') || p.includes('get rid') || p.includes('without') || p.includes('no watermark'))) ||
+      (p.includes('logo') && (p.includes('remove') || p.includes('delete') || p.includes('clean')));
+
+    if (isWatermarkRemoval) {
       return await removeWatermark(inputBuffer, promptText);
+    }
+
+    // 3. Watermark addition: "add watermark", "apply watermark", "watermark this image", etc.
+    const isWatermarkAddition =
+      p.includes('add watermark') ||
+      p.includes('apply watermark') ||
+      p.includes('put watermark') ||
+      p.includes('watermark this') ||
+      p.includes('watermark it') ||
+      p.includes('watermark image') ||
+      p.includes('stamp watermark') ||
+      (p.includes('watermark') && (p.includes('add') || p.includes('put') || p.includes('apply') || p.includes('stamp') || p.includes('badge')));
+
+    if (isWatermarkAddition) {
+      return await addWatermarkToImage(inputBuffer, promptText);
     }
 
     // Adding colors / colorize / enhance colors / vibrancy
@@ -740,6 +899,34 @@ Assistant reply: ${(assistantResponse || '').slice(0, 400)}`;
       return await sharp(inputBuffer).sharpen().png().toBuffer();
     }
 
+    // 4K resolution / Upscale / High Definition
+    if (p.includes('4k') || p.includes('resolution') || p.includes('upscale') || p.includes('high res') || p.includes('hd') || p.includes('ultra')) {
+      const meta = await sharp(inputBuffer).metadata();
+      const currentW = meta.width || 1024;
+      const targetW = Math.min(3840, Math.max(currentW * 2, 2048));
+      
+      let pipeline = sharp(inputBuffer)
+        .resize(targetW, null, { kernel: 'lanczos3', withoutEnlargement: false })
+        .sharpen({ sigma: 1.2, m1: 1.5, m2: 0.7 })
+        .normalize();
+
+      if (p.includes('god ray') || p.includes('ray') || p.includes('sun') || p.includes('light') || p.includes('beam') || p.includes('glow')) {
+        pipeline = pipeline.modulate({ brightness: 1.18, saturation: 1.35 });
+      }
+
+      return await pipeline.png().toBuffer();
+    }
+
+    // God rays / Celestial light beams / Volumetric lighting
+    if (p.includes('god ray') || p.includes('ray') || p.includes('beam') || p.includes('glow') || p.includes('sunburst') || p.includes('volumetric') || p.includes('lighting')) {
+      return await sharp(inputBuffer)
+        .normalize()
+        .modulate({ brightness: 1.22, saturation: 1.4 })
+        .sharpen({ sigma: 1.0, m1: 1.2, m2: 0.5 })
+        .png()
+        .toBuffer();
+    }
+
     // Fallback: auto-enhance / balance
     return await sharp(inputBuffer).normalize().modulate({ saturation: 1.25 }).png().toBuffer();
   }
@@ -797,39 +984,74 @@ Assistant reply: ${(assistantResponse || '').slice(0, 400)}`;
       if (inputBuffer) {
         // Step A: Attempt generative multimodal image-editing with Gemini (@google/genai)
         if (geminiApiKey) {
-          const geminiModels = ['gemini-3.1-flash-lite-image', 'gemini-2.5-flash-image', 'gemini-3.1-flash-image', 'gemini-3-pro-image'];
           const mime = (image && image.mimeType) || 'image/png';
           const b64Data = inputBuffer.toString('base64');
-          for (const mName of geminiModels) {
-            if (imageUrl) break;
-            try {
-              const ai = new GoogleGenAI({
-                apiKey: geminiApiKey,
-                httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
-              });
-              const response = await ai.models.generateContent({
-                model: mName,
-                contents: {
-                  parts: [
-                    {
-                      inlineData: {
-                        data: b64Data,
-                        mimeType: mime
-                      }
-                    },
-                    { text: prompt }
-                  ]
-                }
-              });
-              const parts = response.candidates?.[0]?.content?.parts || [];
-              for (const part of parts) {
-                if (part.inlineData && part.inlineData.data) {
-                  imageUrl = `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
-                  break;
-                }
+
+          // 1. Try generateContent multimodal with gemini-3.1-flash-lite-image (Official recommended model for editing)
+          try {
+            const ai = new GoogleGenAI({
+              apiKey: geminiApiKey,
+              httpOptions: { headers: { 'User-Agent': 'aistudio-build' }, timeout: 6000 }
+            });
+            const response = await ai.models.generateContent({
+              model: 'gemini-3.1-flash-lite-image',
+              contents: {
+                parts: [
+                  {
+                    inlineData: {
+                      data: b64Data,
+                      mimeType: mime
+                    }
+                  },
+                  { text: prompt }
+                ]
               }
-            } catch (err: any) {
-              editingError = err;
+            });
+            const parts = response.candidates?.[0]?.content?.parts || [];
+            for (const part of parts) {
+              if (part.inlineData && part.inlineData.data) {
+                imageUrl = `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
+                break;
+              }
+            }
+          } catch (genErr: any) {
+            editingError = genErr;
+          }
+
+          // 2. Try generateContent multimodal with flash-lite / flash image models
+          if (!imageUrl) {
+            const geminiModels = ['gemini-3.1-flash-lite-image', 'gemini-2.5-flash-image', 'gemini-3.1-flash-image', 'gemini-3-pro-image'];
+            for (const mName of geminiModels) {
+              if (imageUrl) break;
+              try {
+                const ai = new GoogleGenAI({
+                  apiKey: geminiApiKey,
+                  httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+                });
+                const response = await ai.models.generateContent({
+                  model: mName,
+                  contents: {
+                    parts: [
+                      {
+                        inlineData: {
+                          data: b64Data,
+                          mimeType: mime
+                        }
+                      },
+                      { text: prompt }
+                    ]
+                  }
+                });
+                const parts = response.candidates?.[0]?.content?.parts || [];
+                for (const part of parts) {
+                  if (part.inlineData && part.inlineData.data) {
+                    imageUrl = `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
+                    break;
+                  }
+                }
+              } catch (err: any) {
+                editingError = err;
+              }
             }
           }
         }
@@ -897,32 +1119,61 @@ Assistant reply: ${(assistantResponse || '').slice(0, 400)}`;
 
     // 2. TEXT-TO-IMAGE GENERATION (When no input image is provided)
     if ((provider === 'auto' || provider === 'gemini') && geminiApiKey) {
-      const imageModelsToTry = ['imagen-3.0-generate-002', 'imagen-3.0-generate-001'];
-      for (const mName of imageModelsToTry) {
-        if (imageUrl) break;
-        try {
-          const ai = new GoogleGenAI({
-            apiKey: geminiApiKey,
-            httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
-          });
-
-          const response = await ai.models.generateImages({
-            model: mName,
-            prompt: prompt,
-            config: {
-              numberOfImages: 1,
-              outputMimeType: 'image/png',
-              aspectRatio: aspectRatio || '1:1',
+      // Step A1: Try gemini-3.1-flash-lite-image (optimized for speed and high-volume image creation)
+      try {
+        const ai = new GoogleGenAI({
+          apiKey: geminiApiKey,
+          httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+        });
+        const response = await ai.models.generateContent({
+          model: 'gemini-3.1-flash-lite-image',
+          contents: prompt,
+          config: {
+            imageConfig: {
+              aspectRatio: aspectRatio || '1:1'
             }
-          });
-
-          if (response.generatedImages && response.generatedImages[0]?.image?.imageBytes) {
-            const b64Bytes = response.generatedImages[0].image.imageBytes;
-            imageUrl = `data:image/png;base64,${b64Bytes}`;
+          }
+        });
+        const parts = response.candidates?.[0]?.content?.parts || [];
+        for (const part of parts) {
+          if (part.inlineData && part.inlineData.data) {
+            imageUrl = `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
             break;
           }
-        } catch (err: any) {
-          editingError = err;
+        }
+      } catch (err: any) {
+        editingError = err;
+      }
+
+      // Step A2: Try imagen-3.0 models
+      if (!imageUrl) {
+        const imageModelsToTry = ['imagen-3.0-generate-002', 'imagen-3.0-generate-001'];
+        for (const mName of imageModelsToTry) {
+          if (imageUrl) break;
+          try {
+            const ai = new GoogleGenAI({
+              apiKey: geminiApiKey,
+              httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+            });
+
+            const response = await ai.models.generateImages({
+              model: mName,
+              prompt: prompt,
+              config: {
+                numberOfImages: 1,
+                outputMimeType: 'image/png',
+                aspectRatio: aspectRatio || '1:1',
+              }
+            });
+
+            if (response.generatedImages && response.generatedImages[0]?.image?.imageBytes) {
+              const b64Bytes = response.generatedImages[0].image.imageBytes;
+              imageUrl = `data:image/png;base64,${b64Bytes}`;
+              break;
+            }
+          } catch (err: any) {
+            editingError = err;
+          }
         }
       }
     }
@@ -1003,7 +1254,7 @@ Assistant reply: ${(assistantResponse || '').slice(0, 400)}`;
     try {
       const { message, previousMessages, modelType, attachments, enableSearch, memories: clientMemories } = req.body;
       
-      const modelName = "gemini-3.5-flash";
+      const modelName = "gemini-flash-lite-latest";
 
       // Account-based Memory Retrieval (Requirement 1, 5, 8, 9)
       const authUser = await getAuthenticatedUser(req);
@@ -1109,12 +1360,10 @@ Assistant reply: ${(assistantResponse || '').slice(0, 400)}`;
       }
 
       const modelsToTry = [
-        "gemini-3.5-flash",
-        "gemini-3.5-flash-lite",
-        "gemini-3.8-flash",
-        "gemini-flash-latest",
         "gemini-flash-lite-latest",
-        "gemini-2.5-flash"
+        "gemini-3.1-flash-lite",
+        "gemini-3.8-flash",
+        "gemini-flash-latest"
       ];
       let streamedAny = false;
       let lastError = null;

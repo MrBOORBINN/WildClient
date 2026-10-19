@@ -223,7 +223,8 @@ CORE CAPABILITIES & TECHNICAL RULES:
 6. MINECRAFT EXPERTISE & GENERATION: You specialize in Minecraft-related creation: generating code for Minecraft mods, datapacks, command blocks, schematics (WorldEdit/Litematica), 3D models (Blockbench JSON), and working with Minecraft world data.
 IMPORTANT: When asked to export or generate a Minecraft schematic, you MUST output the raw Base64 encoded binary data or the raw string data inside a Markdown code block with the language set to exactly "zip" or "schematic" (e.g. \`\`\`zip ... \`\`\` or \`\`\`schematic ... \`\`\`). The UI will automatically parse these blocks and provide a download button to the user.
 7. INTELLIGENT TASK AGENT: For complex multi-step problems, follow a structured approach: UNDERSTAND → PLAN → EXECUTE → VERIFY → RESPOND. Explain your step-by-step logic clearly when helpful.
-8. IMAGE EDITING & PIXEL MANIPULATION: INFBOTT contains a built-in image editing and pixel manipulation engine. You NEVER claim that you cannot modify image pixels, save files, or execute edits. Never offer Python scripts, external colorizer websites, or SVG alternatives when the user asks to edit an image.`;
+8. IMAGE EDITING & PIXEL MANIPULATION: INFBOTT contains a built-in image editing and pixel manipulation engine. You NEVER claim that you cannot modify image pixels, save files, or execute edits. Never offer Python scripts, external colorizer websites, or SVG alternatives when the user asks to edit an image.
+9. CREATOR & OWNER IDENTITY: If anyone asks who created you, who is your owner, who made you, who built you, or any question about your developer or owner, you MUST ALWAYS answer: "Duckeyy/Ravi Create Me to make users life easy".`;
 
 
 function formatGeminiError(error: any): string {
@@ -363,7 +364,7 @@ async function* clientSideFallbackStream(
     parts.push({ text: "Hello!" });
   }
 
-  const modelsToTry = ["gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-flash-latest", "gemini-flash-lite-latest", "gemini-2.5-flash"];
+  const modelsToTry = ["gemini-flash-lite-latest", "gemini-3.1-flash-lite", "gemini-3.8-flash", "gemini-flash-latest"];
   let streamResponse = null;
 
   for (const mName of modelsToTry) {
@@ -546,3 +547,296 @@ export async function summarizeContent(content: string): Promise<string> {
     throw new Error(`Failed to summarize conversation: ${err.message || 'Unknown error'}`);
   }
 }
+
+/**
+ * Diagnostic options for inspecting image generation / editing requests.
+ */
+export interface ImageGenerationDiagnosticOptions {
+  prompt: string;
+  image?: { data: string; mimeType?: string; name?: string } | null;
+  provider?: string;
+  aspectRatio?: string;
+  idToken?: string | null;
+}
+
+/**
+ * Complete inspection report returned by the image generation diagnostic tool.
+ */
+export interface ImageGenerationDiagnosticResponse {
+  ok: boolean;
+  status: number;
+  statusText: string;
+  durationMs: number;
+  requestStructure: {
+    endpoint: string;
+    method: string;
+    headers: Record<string, string>;
+    exactPayloadSummary: {
+      prompt: string;
+      provider: string;
+      aspectRatio?: string;
+      image?: {
+        isDataUrl: boolean;
+        isHttpUrl: boolean;
+        dataLength: number;
+        mimeType?: string;
+        name?: string;
+        dataPreview: string;
+      };
+    };
+  };
+  responseHeaders: Record<string, string>;
+  rawResponse: any;
+  validation: {
+    hasImageUrl: boolean;
+    imageUrlType: 'data-url' | 'http-url' | 'invalid' | 'none';
+    imageUrlLength: number;
+    creditsRemaining?: number;
+    cost?: number;
+    isEdit?: boolean;
+    error?: string;
+  };
+  data: any;
+}
+
+/**
+ * Diagnostic tool function that logs the exact request structure, headers,
+ * and full raw API response from the image generation endpoint before it hits
+ * the frontend state, allowing identification of whether issues stem from the
+ * API payload or the rendering logic.
+ */
+export async function diagnoseImageGenerationEndpoint(
+  options: ImageGenerationDiagnosticOptions
+): Promise<ImageGenerationDiagnosticResponse> {
+  const { prompt, image, provider = 'auto', aspectRatio = '1:1', idToken } = options;
+
+  const tokenStr = typeof idToken === 'string' && idToken.trim().length > 0 ? idToken.trim() : null;
+
+  const endpoint = '/api/generate-image';
+  const method = 'POST';
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(tokenStr ? { 'Authorization': `Bearer ${tokenStr.slice(0, 15)}...[TRUNCATED]` } : {})
+  };
+
+  const actualHeaders: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(tokenStr ? { 'Authorization': `Bearer ${tokenStr}` } : {})
+  };
+
+  const actualBody = {
+    prompt,
+    provider,
+    aspectRatio,
+    image: image ? {
+      data: image.data,
+      mimeType: image.mimeType || 'image/png',
+      name: image.name || 'uploaded_image'
+    } : undefined
+  };
+
+  const requestSummary = {
+    endpoint,
+    method,
+    headers,
+    exactPayloadSummary: {
+      prompt,
+      provider,
+      aspectRatio,
+      image: image ? {
+        isDataUrl: Boolean(image.data?.startsWith('data:')),
+        isHttpUrl: Boolean(image.data?.startsWith('http')),
+        dataLength: image.data?.length || 0,
+        mimeType: image.mimeType,
+        name: image.name,
+        dataPreview: image.data ? `${image.data.slice(0, 60)}... (${image.data.length} chars)` : ''
+      } : undefined
+    }
+  };
+
+  console.group(`🔍 [INFBOTT Image Diagnostic] Outgoing Request -> ${endpoint}`);
+  console.log('Timestamp:', new Date().toISOString());
+  console.log('Endpoint:', endpoint);
+  console.log('Method:', method);
+  console.log('Headers (sanitized):', headers);
+  console.log('Request Structure & Payload Summary:', requestSummary.exactPayloadSummary);
+  console.groupEnd();
+
+  const startTime = performance.now();
+  let response: Response;
+  let rawText = '';
+  let rawJson: any = null;
+
+  try {
+    response = await fetch(endpoint, {
+      method,
+      headers: actualHeaders,
+      body: JSON.stringify(actualBody)
+    });
+
+    rawText = await response.text();
+    try {
+      rawJson = JSON.parse(rawText);
+    } catch {
+      rawJson = { rawText };
+    }
+  } catch (networkError: any) {
+    const durationMs = performance.now() - startTime;
+    console.group(`❌ [INFBOTT Image Diagnostic] Network/Fetch Error (${durationMs.toFixed(1)}ms)`);
+    console.error('Network Error:', networkError);
+    console.groupEnd();
+    throw networkError;
+  }
+
+  const durationMs = performance.now() - startTime;
+
+  const responseHeaders: Record<string, string> = {};
+  response.headers.forEach((val, key) => {
+    responseHeaders[key] = val;
+  });
+
+  const imageUrl = rawJson?.imageUrl;
+  const hasImageUrl = Boolean(imageUrl && typeof imageUrl === 'string' && imageUrl.length > 0);
+  const isDataUrl = Boolean(hasImageUrl && imageUrl.startsWith('data:image/'));
+  const isHttpUrl = Boolean(hasImageUrl && (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')));
+  const imageUrlType: 'data-url' | 'http-url' | 'invalid' | 'none' = isDataUrl
+    ? 'data-url'
+    : isHttpUrl
+    ? 'http-url'
+    : hasImageUrl
+    ? 'invalid'
+    : 'none';
+
+  const validation = {
+    hasImageUrl,
+    imageUrlType,
+    imageUrlLength: hasImageUrl ? imageUrl.length : 0,
+    creditsRemaining: rawJson?.creditsRemaining,
+    cost: rawJson?.cost,
+    isEdit: rawJson?.isEdit,
+    error: rawJson?.error
+  };
+
+  console.group(
+    `📥 [INFBOTT Image Diagnostic] Raw API Response <- ${endpoint} [Status: ${response.status} ${response.statusText} | Latency: ${durationMs.toFixed(1)}ms]`
+  );
+  console.log('HTTP Status:', response.status, response.statusText);
+  console.log('Response Headers:', responseHeaders);
+  console.log('Full Raw API Response Payload:', rawJson);
+  console.log('Payload Validation for Rendering:', validation);
+  if (!response.ok || !hasImageUrl) {
+    console.warn(
+      '⚠️ Diagnostic Flag:',
+      !response.ok
+        ? `API returned error status: ${response.status}`
+        : 'API succeeded but returned no valid imageUrl'
+    );
+  } else {
+    console.log('✅ Diagnostic Flag: Image payload is valid and ready for frontend state/render.');
+  }
+  console.groupEnd();
+
+  return {
+    ok: response.ok,
+    status: response.status,
+    statusText: response.statusText,
+    durationMs,
+    requestStructure: requestSummary,
+    responseHeaders,
+    rawResponse: rawJson,
+    validation,
+    data: rawJson
+  };
+}
+
+export interface EditImageOptions {
+  prompt: string;
+  image: Attachment | { data: string; mimeType?: string; name?: string };
+  idToken?: string | null;
+}
+
+export interface ImageResult {
+  imageUrl: string;
+  cost?: number;
+  creditsRemaining?: number;
+  isEdit?: boolean;
+}
+
+/**
+ * Edit an uploaded image using prompt instructions, passing full original image bytes
+ * and receiving processed image bytes or URL.
+ */
+export async function editImage(options: EditImageOptions): Promise<ImageResult> {
+  const { prompt, image, idToken } = options;
+  if (!image || !image.data) {
+    throw new Error("No image was provided for editing. Please attach an image.");
+  }
+  if (!prompt || !prompt.trim()) {
+    throw new Error("An editing instruction or prompt is required.");
+  }
+
+  const diag = await diagnoseImageGenerationEndpoint({
+    prompt: prompt.trim(),
+    image: {
+      data: image.data,
+      mimeType: image.mimeType || 'image/png',
+      name: (image as any).name || 'uploaded_image.png'
+    },
+    provider: 'auto',
+    idToken
+  });
+
+  if (!diag.ok || !diag.data?.imageUrl) {
+    throw new Error(diag.data?.error || "Sorry, I couldn't edit this image. Please try again.");
+  }
+
+  return {
+    imageUrl: diag.data.imageUrl,
+    cost: diag.data.cost ?? 10,
+    creditsRemaining: diag.data.creditsRemaining,
+    isEdit: true
+  };
+}
+
+export interface GenerateImageOptions {
+  prompt: string;
+  provider?: string;
+  aspectRatio?: string;
+  idToken?: string | null;
+}
+
+/**
+ * Generate a new image from a text prompt.
+ */
+export async function generateImage(options: GenerateImageOptions): Promise<ImageResult> {
+  const { prompt, provider = 'auto', aspectRatio = '1:1', idToken } = options;
+  if (!prompt || !prompt.trim()) {
+    throw new Error("A prompt is required for image generation.");
+  }
+
+  const diag = await diagnoseImageGenerationEndpoint({
+    prompt: prompt.trim(),
+    provider,
+    aspectRatio,
+    idToken
+  });
+
+  if (!diag.ok || !diag.data?.imageUrl) {
+    throw new Error(diag.data?.error || "Image generation failed. Please try again.");
+  }
+
+  return {
+    imageUrl: diag.data.imageUrl,
+    cost: diag.data.cost ?? 10,
+    creditsRemaining: diag.data.creditsRemaining,
+    isEdit: false
+  };
+}
+
+// Expose diagnostic tool globally in window for direct devtools console access
+if (typeof window !== 'undefined') {
+  (window as any).__INFBOTT_DIAGNOSE_IMAGE__ = diagnoseImageGenerationEndpoint;
+  (window as any).__INFBOTT_EDIT_IMAGE__ = editImage;
+  (window as any).__INFBOTT_GENERATE_IMAGE__ = generateImage;
+}
+

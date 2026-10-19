@@ -40,6 +40,7 @@ export interface Message {
   isImageGenerationLoading?: boolean;
   imagePrompt?: string;
   isEdit?: boolean;
+  imageUrl?: string;
 }
 
 export type SnippetColor = 'amber' | 'emerald' | 'sky' | 'purple' | 'rose';

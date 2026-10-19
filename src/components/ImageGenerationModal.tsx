@@ -4,6 +4,7 @@ import { Sparkles, Upload, X, Download, Image as ImageIcon, Zap, AlertCircle, Ch
 import { cn } from '../lib/utils';
 import { Attachment } from '../types';
 import { auth } from '../firebase';
+import { diagnoseImageGenerationEndpoint, editImage, generateImage } from '../services/geminiService';
 
 interface ImageGenerationModalProps {
   isOpen: boolean;
@@ -65,24 +66,21 @@ export const ImageGenerationModal: React.FC<ImageGenerationModalProps> = ({
 
     try {
       const idToken = auth.currentUser ? await auth.currentUser.getIdToken().catch(() => null) : null;
-      const response = await fetch('/api/generate-image', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(idToken ? { 'Authorization': `Bearer ${idToken}` } : {})
-        },
-        body: JSON.stringify({
+      let data: { imageUrl: string; creditsRemaining?: number; cost?: number };
+
+      if (sourceImage && sourceImage.data) {
+        data = await editImage({
+          prompt,
+          image: sourceImage,
+          idToken
+        });
+      } else {
+        data = await generateImage({
           prompt,
           provider,
           aspectRatio,
-          image: sourceImage ? { data: sourceImage.data, mimeType: sourceImage.mimeType } : undefined
-        })
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to generate image.');
+          idToken
+        });
       }
 
       if (data.imageUrl) {
