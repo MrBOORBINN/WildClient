@@ -1,24 +1,21 @@
 import React, { useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, User, Cloud, LogOut, Check, Sparkles, Brain, Trash2, ShieldCheck, ChevronDown, ChevronUp } from 'lucide-react';
-import { Memory } from '../types';
+import { X, User, Cloud, LogOut, Check, Sparkles, Brain, Trash2, ShieldCheck, ChevronDown, ChevronUp, Zap } from 'lucide-react';
+import { Memory, UserProfileData } from '../types';
 
 interface ProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
   user: any;
-  profileData: {
-    fullName: string;
-    email: string;
-    avatar: string;
-    avatarUrl?: string;
-  };
+  profileData: UserProfileData;
   setProfileData: React.Dispatch<React.SetStateAction<any>>;
   onSignOut: () => void;
   onOpenCloudConsole: () => void;
   memories?: Memory[];
   onDeleteMemory?: (id: string) => void;
   onClearAllMemories?: () => void;
+  userCredits?: number;
+  onOpenTopUp?: () => void;
 }
 
 const ProfileModal: React.FC<ProfileModalProps> = ({ 
@@ -31,12 +28,21 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
   onOpenCloudConsole,
   memories = [],
   onDeleteMemory,
-  onClearAllMemories
+  onClearAllMemories,
+  userCredits = 70,
+  onOpenTopUp
 }) => {
   const [name, setName] = useState(profileData.fullName || '');
+  const [customInstructions, setCustomInstructions] = useState(profileData.customSystemInstructions || '');
   const [saved, setSaved] = useState(false);
   const [showMemories, setShowMemories] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
+
+  // Sync state when profileData changes
+  React.useEffect(() => {
+    setName(profileData.fullName || '');
+    setCustomInstructions(profileData.customSystemInstructions || '');
+  }, [profileData]);
 
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -54,15 +60,18 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
 
   const handleSave = () => {
     const trimmed = name.trim();
-    if (trimmed) {
-      setProfileData((prev: any) => ({
-        ...prev,
-        fullName: trimmed,
-        avatar: trimmed[0]?.toUpperCase() || 'I'
-      }));
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
-    }
+    const updatedName = trimmed || profileData.fullName || 'User';
+    setProfileData((prev: any) => ({
+      ...prev,
+      fullName: updatedName,
+      avatar: updatedName[0]?.toUpperCase() || 'I',
+      customSystemInstructions: customInstructions
+    }));
+    try {
+      localStorage.setItem('infbott_custom_system_instructions', customInstructions);
+    } catch (e) {}
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
   };
 
   return (
@@ -146,6 +155,63 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
                     disabled
                     className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-[#8e918f] cursor-not-allowed opacity-75"
                   />
+                </div>
+
+                {/* Custom System Instructions & AI Persona */}
+                <div className="space-y-1.5 p-3.5 rounded-2xl bg-white/[0.03] border border-white/10">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                      <Sparkles size={13} className="text-purple-400" />
+                      <span>Custom System Instructions</span>
+                    </label>
+                    <span className="text-[10px] text-white/40">{customInstructions.length}/3000</span>
+                  </div>
+                  <textarea 
+                    value={customInstructions}
+                    onChange={(e) => setCustomInstructions(e.target.value)}
+                    rows={3}
+                    maxLength={3000}
+                    placeholder="Define a persistent persona or rules for all future responses (e.g. 'Always answer in concise bullet points with TypeScript code. Act as a senior software architect. Speak in natural Hinglish.')..."
+                    className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-xs text-white placeholder-white/30 focus:outline-none focus:ring-1 focus:ring-[#4285f4] resize-none leading-relaxed"
+                  />
+                  <div className="text-[11px] text-[#8e918f]">
+                    Persistently customizes INFBOTT's personality and instructions across all future conversations.
+                  </div>
+                </div>
+
+                {/* Credit Balance & Top Up */}
+                <div className="p-3.5 rounded-2xl bg-amber-500/[0.06] border border-amber-500/20 flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400">
+                      <Zap size={16} />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <span>{userCredits} Credits Available</span>
+                        {userCredits < 20 && (
+                          <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded-full bg-amber-500/30 text-amber-300">
+                            Low
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-[#8e918f]">
+                        10 credits per image generation/edit
+                      </div>
+                    </div>
+                  </div>
+
+                  {onOpenTopUp && (
+                    <button
+                      onClick={() => {
+                        onClose();
+                        onOpenTopUp();
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black font-bold text-xs transition-all shadow-sm flex items-center gap-1 cursor-pointer"
+                    >
+                      <Zap size={12} className="fill-black" />
+                      <span>Top Up</span>
+                    </button>
+                  )}
                 </div>
               </div>
 

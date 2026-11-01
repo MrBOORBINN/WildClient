@@ -22,8 +22,7 @@ interface HeaderProps {
   onOpenNotebook?: () => void;
   notebookCount?: number;
   userCredits?: number;
-  onOpenLiveVoice?: () => void;
-  isLiveVoiceOpen?: boolean;
+  onOpenTopUp?: () => void;
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -42,8 +41,7 @@ const Header: React.FC<HeaderProps> = ({
   onOpenNotebook,
   notebookCount = 0,
   userCredits = 70,
-  onOpenLiveVoice,
-  isLiveVoiceOpen = false
+  onOpenTopUp,
 }) => {
   const [syncStatus, setSyncStatus] = useState<'syncing' | 'synced'>('synced');
 
@@ -54,6 +52,8 @@ const Header: React.FC<HeaderProps> = ({
       return () => clearTimeout(timer);
     }
   }, [messages.length]);
+
+  const isLowCredits = userCredits < 20;
 
   return (
     <header className="h-14 flex items-center justify-between px-3 sm:px-5 border-b border-white/5 bg-[#131314]/80 backdrop-blur-md sticky top-0 z-30">
@@ -86,30 +86,25 @@ const Header: React.FC<HeaderProps> = ({
       </div>
 
       <div className="flex items-center gap-2 sm:gap-3">
-        {/* Live Voice Button in Header */}
-        {onOpenLiveVoice && (
-          <button
-            type="button"
-            onClick={onOpenLiveVoice}
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border cursor-pointer shadow-sm active:scale-95",
-              isLiveVoiceOpen
-                ? "bg-purple-600 text-white border-purple-400 shadow-purple-500/20"
-                : "bg-white/5 hover:bg-white/10 text-white/90 hover:text-white border-white/10"
-            )}
-            title="Start Real-Time Live Voice Conversation"
-            aria-label="Live Voice"
-          >
-            <Mic size={14} className={cn(isLiveVoiceOpen ? "text-white animate-pulse" : "text-purple-400")} />
-            <span className="hidden sm:inline">Live Voice</span>
-          </button>
-        )}
-
-        {/* Credit Count Badge on Top Right */}
-        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 font-bold text-xs shadow-inner">
-          <Zap size={14} className="animate-pulse" />
+        {/* Credit Count Badge on Top Right (Interactive & Low-Balance Indicator) */}
+        <button 
+          onClick={onOpenTopUp}
+          className={cn(
+            "flex items-center gap-1.5 px-3 py-1.5 rounded-full font-bold text-xs transition-all cursor-pointer shadow-inner",
+            isLowCredits 
+              ? "bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/50 text-amber-300 ring-2 ring-amber-500/20 animate-pulse" 
+              : "bg-white/5 hover:bg-white/10 border border-white/10 text-amber-400"
+          )}
+          title={isLowCredits ? "Low credits! Click to top up" : "Click to top up credits"}
+        >
+          <Zap size={14} className={isLowCredits ? "text-amber-400 fill-amber-400" : ""} />
           <span className="font-mono">{userCredits} Credits</span>
-        </div>
+          {isLowCredits && (
+            <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded-full bg-amber-500/30 text-amber-200">
+              Low
+            </span>
+          )}
+        </button>
 
         {/* Profile Avatar Button */}
         <button 

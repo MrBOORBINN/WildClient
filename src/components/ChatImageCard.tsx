@@ -117,7 +117,7 @@ export const ChatImageCard: React.FC<ChatImageCardProps> = ({
         const filteredDataUrl = canvas.toDataURL('image/png', 1.0);
         const link = document.createElement('a');
         link.href = filteredDataUrl;
-        link.download = `infbott_${selectedFilter === 'original' ? 'image' : selectedFilter}.png`;
+        link.download = `${selectedFilter === 'original' ? 'image' : selectedFilter}.png`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -140,7 +140,7 @@ export const ChatImageCard: React.FC<ChatImageCardProps> = ({
   const triggerDirectDownload = () => {
     const link = document.createElement('a');
     link.href = src;
-    link.download = 'infbott_image.png';
+    link.download = 'image.png';
     link.target = '_blank';
     document.body.appendChild(link);
     link.click();

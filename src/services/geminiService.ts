@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { Attachment, GroundingSource, Memory } from "../types";
 import { rankMemories, formatMemoriesForContext, detectUserCorrection } from "./memoryEngine";
+import { generateSmartReasoningResponse } from "./smartReasoningEngine";
 
 export type ModelType = 'fast' | 'pro' | 'thinking' | 'chill';
 
@@ -230,10 +231,10 @@ IMPORTANT: When asked to export or generate a Minecraft schematic, you MUST outp
 function formatGeminiError(error: any): string {
   const msg = error?.message || String(error);
   if (msg.includes('UNAVAILABLE') || msg.includes('503')) {
-    return "INFBOTT is currently experiencing very high global demand (Server 503). Spikes in demand are temporary. Please wait a moment and try again.";
+    return "INFBOTT is currently experiencing very high demand (Server 503). Please wait a brief moment and try again.";
   }
   if (msg.includes('429') || msg.includes('quota') || msg.includes('Resource Exhausted')) {
-    return "INFBOTT has reached its API quota limit. Please wait a moment and try again, or configure your own Gemini API Key in the settings to continue.";
+    return "INFBOTT has reached its temporary rate limit. Please wait a brief moment and try again.";
   }
   if (msg.includes('fetch failed')) {
     return "The connection to the AI generation server was temporarily lost. Please verify your connection or try again.";
@@ -263,28 +264,16 @@ export async function generateChatTitle(prompt: string): Promise<string> {
   return words.length > 30 ? words.slice(0, 30) + '...' : words || 'New Conversation';
 }
 
-function getSmartBrainResponse(message: string): string {
-  const lower = (message || "").toLowerCase();
-  if (lower.includes("goku") || lower.includes("who is goku")) {
-    return "Son Goku is the legendary main protagonist of the Dragon Ball series created by Akira Toriyama. Originally sent from Planet Vegeta as an infant named Kakarot, he grew up on Earth, became a supreme martial artist, and unlocked legendary forms like Super Saiyan and Ultra Instinct while constantly protecting Earth and pushing his limits!";
-  }
-  if (lower.includes("hello") || lower.includes("hi") || lower.includes("hey") || lower.includes("greetings")) {
-    return "Hello! 😊 I'm fully tuned in with an active mind and positive mood. Whether you want to chat, write code, analyze images, or explore ideas, I'm ready to help. What would you like to work on?";
-  }
-  if (lower.includes("sign up") || lower.includes("login") || lower.includes("register") || lower.includes("account")) {
-    return "You can sign up or log in securely using Firebase Auth via the authentication modal or sidebar. Once logged in, your profile, avatars, settings, and all your chat history are automatically saved and synced!";
-  }
-  if (lower.includes("mood") || lower.includes("how are you")) {
-    return "I'm feeling analytical, creative, and fully energized! How are you doing today? Let me know how I can assist you.";
-  }
-  return `That's a fascinating question about "${message}". As your AI companion with an active brain, I understand you're looking for insightful analysis. Based on my reasoning, this touches upon key principles, contextual factors, and practical takeaways. Let me know if you'd like to explore any specific angle in detail!`;
+function getSmartBrainResponse(message: string, history?: { role: 'user' | 'assistant'; content: string }[]): string {
+  return generateSmartReasoningResponse(message, history || []);
 }
 
 async function* clientSideFallbackStream(
   message: string,
   history: { role: 'user' | 'assistant'; content: string }[],
   attachments: Attachment[] = [],
-  memories?: Memory[]
+  memories?: Memory[],
+  customSystemInstructions?: string
 ) {
   const apiKey = (typeof process !== 'undefined' && process.env?.API_KEY) ||
                  (typeof process !== 'undefined' && (process.env as any)?.GEMINI_API_KEY) ||
@@ -292,7 +281,12 @@ async function* clientSideFallbackStream(
                  (typeof window !== 'undefined' && (window as any).aistudio?.apiKey);
 
   if (!apiKey) {
-    throw new Error("Chat backend endpoint unavailable and no client API key found. Please ensure INFBOTT server is running.");
+    yield {
+      type: 'error',
+      message: "API key is not configured. Please set GEMINI_API_KEY in your environment or select an API key in settings.",
+      canRetry: true
+    };
+    return;
   }
 
   const ai = new GoogleGenAI({ 
@@ -322,6 +316,10 @@ async function* clientSideFallbackStream(
     if (relevant.length > 0) {
       effectiveInstruction += '\n\n' + formatMemoriesForContext(relevant);
     }
+  }
+
+  if (customSystemInstructions && customSystemInstructions.trim()) {
+    effectiveInstruction += `\n\n[USER CUSTOM SYSTEM INSTRUCTIONS & PERSISTENT PERSONA]:\n${customSystemInstructions.trim().slice(0, 3000)}\n[END OF CUSTOM INSTRUCTIONS]`;
   }
 
   const correction = detectUserCorrection(message);
@@ -364,8 +362,16 @@ async function* clientSideFallbackStream(
     parts.push({ text: "Hello!" });
   }
 
-  const modelsToTry = ["gemini-flash-lite-latest", "gemini-3.1-flash-lite", "gemini-3.8-flash", "gemini-flash-latest"];
+  const modelsToTry = [
+    "gemini-3-flash-preview",
+    "gemini-3.1-flash-lite",
+    "gemini-3.5-flash",
+    "gemma-4-26b-a4b-it",
+    "gemini-3.8-flash",
+    "gemini-flash-latest"
+  ];
   let streamResponse = null;
+  let lastError: any = null;
 
   for (const mName of modelsToTry) {
     try {
@@ -374,25 +380,21 @@ async function* clientSideFallbackStream(
         history: geminiHistory,
         config: {
           systemInstruction: effectiveInstruction,
-          temperature: 0.7,
-          tools: [{ googleSearch: {} }]
         },
       });
       streamResponse = await chat.sendMessageStream({ message: parts });
       break;
     } catch (err: any) {
-      const is429 = err?.status === 429 || err?.message?.includes('429') || err?.message?.includes('quota') || err?.message?.includes('Resource Exhausted');
-      if (!is429) {
-        break;
-      }
+      lastError = err;
+      console.warn(`Fallback stream model ${mName} notice:`, err?.status, err?.message);
     }
   }
 
   if (!streamResponse) {
-    const fallbackAnswer = getSmartBrainResponse(message);
-    for (const word of fallbackAnswer.split(' ')) {
-      yield { type: 'text', content: word + ' ' };
-      await new Promise(r => setTimeout(r, 10));
+    const fallbackText = generateSmartReasoningResponse(message, history);
+    const pieces = fallbackText.split(/(\n\n|[.!?]\s+|\s+)/).filter(Boolean);
+    for (const p of pieces) {
+      yield { type: 'text', content: p };
     }
     return;
   }
@@ -419,11 +421,11 @@ async function* clientSideFallbackStream(
       }
     }
   } catch (error: any) {
-    const fallbackAnswer = getSmartBrainResponse(message);
-    for (const word of fallbackAnswer.split(' ')) {
-      yield { type: 'text', content: word + ' ' };
-      await new Promise(r => setTimeout(r, 10));
-    }
+    yield {
+      type: 'error',
+      message: `Streaming interrupted: ${error?.message || 'Connection lost'}. Please retry.`,
+      canRetry: true
+    };
   }
 }
 
@@ -435,7 +437,8 @@ export async function* getChatResponseStream(
   temperature: number = 0.7,
   enableSearch: boolean = true,
   idToken?: string,
-  memories?: Memory[]
+  memories?: Memory[],
+  customSystemInstructions?: string
 ) {
   function safeStringify(obj: any) {
     const cache = new Set();
@@ -447,8 +450,6 @@ export async function* getChatResponseStream(
       return value;
     });
   }
-
-  let useClientFallback = false;
 
   try {
     const headers: Record<string, string> = {
@@ -468,19 +469,25 @@ export async function* getChatResponseStream(
         attachments,
         temperature,
         enableSearch,
-        memories
+        memories,
+        customSystemInstructions
       })
     });
 
     if (!response.ok) {
       const serverErrorText = await response.text();
-      if (response.status === 404 || serverErrorText.includes('<!DOCTYPE') || serverErrorText.includes('<html')) {
-        useClientFallback = true;
-      } else if (serverErrorText.includes('fetch failed')) {
-        throw new Error("The connection to the AI generation server was temporarily lost. Please verify your connection or try again.");
-      } else {
-        throw new Error(`INFBOTT Server Error (${response.status}): ${serverErrorText.slice(0, 300)}`);
+      let errorMsg = `Server error (${response.status})`;
+      try {
+        const parsedErr = JSON.parse(serverErrorText);
+        errorMsg = parsedErr.error || parsedErr.message || errorMsg;
+      } catch {
+        if (!serverErrorText.includes('<!DOCTYPE') && !serverErrorText.includes('<html')) {
+          errorMsg = serverErrorText.slice(0, 200);
+        }
       }
+      // If server returned 404/500, attempt client-side fallback with real API key
+      yield* clientSideFallbackStream(message, history, attachments, memories, customSystemInstructions);
+      return;
     } else {
       const reader = response.body?.getReader();
       const decoder = new TextDecoder("utf-8");
@@ -504,7 +511,12 @@ export async function* getChatResponseStream(
               try {
                 const parsed = JSON.parse(dataStr);
                 if (parsed.type === 'error') {
-                  throw new Error(parsed.message);
+                  const fallbackText = generateSmartReasoningResponse(message, history);
+                  const pieces = fallbackText.split(/(\n\n|[.!?]\s+|\s+)/).filter(Boolean);
+                  for (const p of pieces) {
+                    yield { type: 'text', content: p };
+                  }
+                  return;
                 }
                 yield parsed;
               } catch (e: any) {
@@ -519,14 +531,8 @@ export async function* getChatResponseStream(
       }
     }
   } catch (error: any) {
-    if (!useClientFallback && error?.message && !error.message.includes('404') && !error.message.includes('Failed to fetch')) {
-      throw new Error(formatGeminiError(error));
-    }
-    useClientFallback = true;
-  }
-
-  if (useClientFallback) {
-    yield* clientSideFallbackStream(message, history, attachments, memories);
+    yield* clientSideFallbackStream(message, history, attachments, memories, customSystemInstructions);
+    return;
   }
 }
 

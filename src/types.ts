@@ -5,6 +5,15 @@ export interface User {
   full_name: string | null;
   avatar_url: string | null;
   message_count: number;
+  custom_system_instructions?: string;
+}
+
+export interface UserProfileData {
+  fullName: string;
+  email: string;
+  avatar: string;
+  avatarUrl?: string;
+  customSystemInstructions?: string;
 }
 
 export interface Session {
@@ -41,6 +50,8 @@ export interface Message {
   imagePrompt?: string;
   isEdit?: boolean;
   imageUrl?: string;
+  isError?: boolean;
+  canRetry?: boolean;
 }
 
 export type SnippetColor = 'amber' | 'emerald' | 'sky' | 'purple' | 'rose';

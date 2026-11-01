@@ -36,8 +36,6 @@ interface InputBarProps {
   handleSummarizeChat: () => void;
   setIsFeedbackModalOpen: (open: boolean) => void;
   currentSessionId?: string | null;
-  onOpenLiveVoice?: () => void;
-  isLiveVoiceOpen?: boolean;
 }
 
 const InputBar: React.FC<InputBarProps> = ({
@@ -60,8 +58,6 @@ const InputBar: React.FC<InputBarProps> = ({
   handleSummarizeChat,
   setIsFeedbackModalOpen,
   currentSessionId,
-  onOpenLiveVoice,
-  isLiveVoiceOpen = false
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const replaceIndexRef = useRef<number | null>(null);
@@ -223,25 +219,6 @@ const InputBar: React.FC<InputBarProps> = ({
               <Upload size={18} />
             </button>
           </div>
-
-          {/* Clean Microphone Button immediately to the left of message input field */}
-          <button
-            type="button"
-            onClick={onOpenLiveVoice}
-            className={cn(
-              "p-2 rounded-full transition-all cursor-pointer relative active:scale-95",
-              isLiveVoiceOpen
-                ? "bg-purple-600 text-white shadow-lg shadow-purple-500/20"
-                : "text-[#8e918f] hover:text-white hover:bg-white/10"
-            )}
-            title="Real-Time Live Voice Conversation (ChatGPT style)"
-            aria-label="Live Voice Conversation"
-          >
-            <Mic size={18} className={cn(isLiveVoiceOpen && "animate-pulse")} />
-            {isLiveVoiceOpen && (
-              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            )}
-          </button>
 
           {/* Web Research Toggle */}
           {setIsSearchEnabled && (

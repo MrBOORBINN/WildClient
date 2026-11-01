@@ -140,7 +140,7 @@ const ChatArea = ({
                         p: ({ children }: any) => <div className="mb-3 leading-relaxed last:mb-0">{children}</div>,
                         img: ({ node, ...props }: any) => props.src ? <ChatImageCard src={props.src} alt={props.alt || "INFBOTT Image"} /> : null,
                         a: ({ href, children }: any) => {
-                          if (href && (href.startsWith('data:image/') || href.startsWith('https://image.pollinations.ai/') || /\.(png|jpe?g|webp|gif|svg)($|\?)/i.test(href))) {
+                          if (href && (href.startsWith('data:image/') || /\.(png|jpe?g|webp|gif|svg)($|\?)/i.test(href))) {
                             return <ChatImageCard src={href} alt={String(children) || "INFBOTT Image"} />;
                           }
                           return (

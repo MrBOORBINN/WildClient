@@ -1,4 +1,3 @@
-import { GenerationTimer } from './components/GenerationTimer';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   Menu, 
@@ -36,7 +35,13 @@ import {
   Globe,
   Download,
   BookOpen,
-  Clock
+  Clock,
+  ThumbsUp,
+  ThumbsDown,
+  Heart,
+  AlertTriangle,
+  AlertCircle,
+  RotateCw
 } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -52,6 +57,7 @@ import {
   editImage,
   generateImage
 } from './services/geminiService';
+import { generateSmartReasoningResponse } from './services/smartReasoningEngine';
 import { 
   collection, 
   doc, 
@@ -74,7 +80,7 @@ import {
   onAuthStateChanged, 
   signOut 
 } from 'firebase/auth';
-import { Message, Attachment, NotebookSnippet, SnippetColor, GroundingSource, Memory } from './types';
+import { Message, Attachment, NotebookSnippet, SnippetColor, GroundingSource, Memory, UserProfileData } from './types';
 import { 
   getMemoriesForUser, 
   deleteMemory, 
@@ -101,7 +107,82 @@ import ProfileModal from './components/ProfileModal';
 import { ImageGenerationLoader } from './components/ImageGenerationLoader';
 import { ChatImageCard } from './components/ChatImageCard';
 import { ImageGalleryModal, GalleryImage } from './components/ImageGalleryModal';
-import { LiveVoiceModal } from './components/LiveVoiceModal';
+import { CreditTopUpModal } from './components/CreditTopUpModal';
+
+// Helper function to extract reliable numeric millisecond timestamp from message
+export const getMessageTimestamp = (m: Message): number => {
+  if (typeof m.timestamp === 'number') return m.timestamp;
+  if ((m.timestamp as any)?.toMillis) return (m.timestamp as any).toMillis();
+  if ((m.timestamp as any)?.seconds) return (m.timestamp as any).seconds * 1000;
+  return 0;
+};
+
+/**
+ * Strict chronological message sorter that guarantees user messages ALWAYS precede
+ * the corresponding AI assistant response (ensuring AI message is placed down/below the user message)
+ */
+export const sortMessagesChronologically = (msgs: Message[]): Message[] => {
+  return [...msgs].sort((a, b) => {
+    const tA = getMessageTimestamp(a);
+    const tB = getMessageTimestamp(b);
+
+    // If timestamps differ by more than 50ms, order by time strictly
+    if (Math.abs(tA - tB) > 50) {
+      return tA - tB;
+    }
+
+    // Tie-breaker: If timestamps are within same interaction turn (<= 50ms),
+    // user message MUST ALWAYS appear BEFORE the assistant message!
+    if (a.role === 'user' && b.role === 'assistant') {
+      return -1;
+    }
+    if (a.role === 'assistant' && b.role === 'user') {
+      return 1;
+    }
+
+    if (tA !== tB) {
+      return tA - tB;
+    }
+    return (a.id || '').localeCompare(b.id || '');
+  });
+};
+
+/**
+ * Fast sub-100ms routing policy for exact standalone greetings.
+ * If user sends a standalone greeting with no previous unanswered context,
+ * respond immediately without network or model overhead.
+ */
+export function getInstantReply(
+  message: string,
+  hasRelevantContext: boolean
+): string | null {
+  if (hasRelevantContext) return null;
+
+  const normalized = message
+    .trim()
+    .toLowerCase()
+    .replace(/[!.?,]+$/g, "");
+
+  const greetings = new Set([
+    "hi",
+    "hello",
+    "hey",
+    "hey there",
+    "hi there",
+    "namaste",
+    "yo",
+    "hola",
+    "hey infbott",
+    "hi infbott",
+    "hello infbott"
+  ]);
+
+  if (greetings.has(normalized)) {
+    return "Hey! 👋 How can I help you today?";
+  }
+
+  return null;
+}
 
 // Helper function to handle downloading Minecraft schematic/NBT data
 const handleDownloadMinecraftExport = (content: string, type: string) => {
@@ -171,6 +252,15 @@ export function App() {
   const [isDriveModalOpen, setIsDriveModalOpen] = useState(false);
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
   const [userCredits, setUserCredits] = useState<number>(70);
+  const [isTopUpModalOpen, setIsTopUpModalOpen] = useState(false);
+  const [isLowCreditDismissed, setIsLowCreditDismissed] = useState(false);
+
+  // Automatically re-enable low credit alerts if balance is topped up and later drops below 20
+  useEffect(() => {
+    if (userCredits >= 20) {
+      setIsLowCreditDismissed(false);
+    }
+  }, [userCredits]);
 
   useEffect(() => {
     if (!user) {
@@ -204,7 +294,7 @@ export function App() {
     const imageMessage: Message = {
       id: `assistant-img-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
       role: 'assistant',
-      content: `Here is the AI generated image for prompt: "${prompt}"\n\n![AI Generated Image](${imageUrl})`,
+      content: `![${prompt}](${imageUrl})`,
       imageUrl: imageUrl,
       imagePrompt: prompt,
       timestamp: Date.now()
@@ -258,6 +348,9 @@ export function App() {
     return list;
   }, [messages]);
 
+  // Top-level displayMessages memoization strictly compliant with React Rules of Hooks
+  const displayMessages = useMemo(() => sortMessagesChronologically(messages), [messages]);
+
   const handleRegenerateImage = (promptText: string) => {
     if (!promptText || isLoading) return;
     setInput(promptText);
@@ -277,41 +370,39 @@ export function App() {
     handleSend('Use this as watermark');
   };
 
-  // Real-Time Live Voice Conversation
-  const [isLiveVoiceOpen, setIsLiveVoiceOpen] = useState(false);
-  const [userIdToken, setUserIdToken] = useState<string | null>(null);
+  // Dynamic AI Status Indicator state
+  const [aiStatus, setAiStatus] = useState<string>('INFBOTT is Thinking...');
 
-  useEffect(() => {
-    if (user) {
-      user.getIdToken().then(setUserIdToken).catch(() => setUserIdToken(null));
-    } else {
-      setUserIdToken(null);
-    }
-  }, [user]);
-
-  const liveVoiceHistory = useMemo(() => {
-    return messages.slice(-12).map(m => ({
-      role: m.role,
-      content: typeof m.content === 'string' ? m.content : ''
+  // Firestore-backed Reaction Handlers (Like, Heart, Dislike)
+  const handleReaction = async (messageId: string, reactionType: 'thumbs_up' | 'thumbs_down' | 'heart') => {
+    let nextReaction: 'thumbs_up' | 'thumbs_down' | 'heart' | null = null;
+    setMessages(prev => prev.map(m => {
+      if (m.id === messageId) {
+        nextReaction = m.reaction === reactionType ? null : reactionType;
+        return { ...m, reaction: nextReaction };
+      }
+      return m;
     }));
-  }, [messages]);
 
-  const handleLiveVoiceMessageLogged = (userText: string, assistantText: string) => {
-    if (!userText.trim() && !assistantText.trim()) return;
-    const now = Date.now();
-    const userMsg: Message = {
-      id: `user-voice-${now}-${Math.random().toString(36).substr(2, 6)}`,
-      role: 'user',
-      content: userText,
-      timestamp: now
-    };
-    const assistantMsg: Message = {
-      id: `assistant-voice-${now + 1}-${Math.random().toString(36).substr(2, 6)}`,
-      role: 'assistant',
-      content: assistantText,
-      timestamp: now + 1
-    };
-    setMessages(prev => [...prev, userMsg, assistantMsg]);
+    if (user?.uid && currentSessionId) {
+      try {
+        const msgRef = doc(db, `sessions/${currentSessionId}/messages`, messageId);
+        await setDoc(msgRef, { reaction: nextReaction }, { merge: true });
+
+        // Record in the central feedback collection for tracking & continuous improvement
+        const targetMsg = messages.find(m => m.id === messageId);
+        await addDoc(collection(db, 'feedback'), {
+          userId: user.uid,
+          sessionId: currentSessionId,
+          messageId: messageId,
+          reaction: nextReaction,
+          contentPreview: (targetMsg?.content || '').slice(0, 300),
+          createdAt: serverTimestamp()
+        });
+      } catch (err) {
+        console.warn("Failed to persist reaction to Firestore:", err);
+      }
+    }
   };
 
   // Code & Game Runner Preview Sandbox
@@ -334,11 +425,12 @@ export function App() {
   const [floatingMenuPos, setFloatingMenuPos] = useState<{ x: number; y: number } | null>(null);
 
   // Profile data
-  const [profileData, setProfileData] = useState({
+  const [profileData, setProfileData] = useState<UserProfileData>({
     fullName: 'Explorer',
     email: '',
     avatar: 'I',
-    avatarUrl: ''
+    avatarUrl: '',
+    customSystemInstructions: localStorage.getItem('infbott_custom_system_instructions') || ''
   });
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -365,12 +457,14 @@ export function App() {
       const activeEmail = userData?.email || user.email || '';
       const activeAvatarUrl = userData?.avatarUrl || (user.photoURL && user.photoURL.startsWith('http') ? user.photoURL : '');
       const activeInitial = (activeName || activeEmail || 'I')[0]?.toUpperCase() || 'I';
+      const activeCustomInstructions = userData?.customSystemInstructions || localStorage.getItem('infbott_custom_system_instructions') || '';
 
       setProfileData({
         fullName: activeName,
         email: activeEmail,
         avatar: activeInitial,
-        avatarUrl: activeAvatarUrl
+        avatarUrl: activeAvatarUrl,
+        customSystemInstructions: activeCustomInstructions
       });
     }
   }, [user, userData]);
@@ -421,7 +515,7 @@ export function App() {
       const localMsgs = localStorage.getItem(localMsgKey) || localStorage.getItem(fallbackKey);
       if (localMsgs) {
         try {
-          setMessages(JSON.parse(localMsgs));
+          setMessages(sortMessagesChronologically(JSON.parse(localMsgs)));
         } catch (e) {}
       }
       return;
@@ -433,10 +527,27 @@ export function App() {
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Message[];
-      setMessages(msgs);
+      const remoteMsgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Message[];
+      setMessages(prev => {
+        const remoteIds = new Set(remoteMsgs.map(m => m.id));
+        // Keep in-flight local messages: image generation loaders, streaming assistant messages, or recent messages not yet synced
+        const pendingLocalMsgs = prev.filter(m => 
+          !remoteIds.has(m.id) && (
+            m.isImageGenerationLoading || 
+            m.id.startsWith('assistant-') || 
+            (m.timestamp && (Date.now() - (typeof m.timestamp === 'number' ? m.timestamp : Date.now()) < 60000))
+          )
+        );
+
+        if (pendingLocalMsgs.length === 0) {
+          return sortMessagesChronologically(remoteMsgs);
+        }
+
+        const merged = [...remoteMsgs, ...pendingLocalMsgs];
+        return sortMessagesChronologically(merged);
+      });
       try {
-        localStorage.setItem(`infbott_messages_${currentSessionId}`, JSON.stringify(msgs));
+        localStorage.setItem(`infbott_messages_${currentSessionId}`, JSON.stringify(remoteMsgs));
       } catch (e) {}
     }, (error) => {
       console.warn("Firestore messages error, using local state:", error);
@@ -504,14 +615,22 @@ export function App() {
   }, [user]);
 
   const handleDeleteMemory = async (id: string) => {
-    await deleteMemory(id);
+    try {
+      await deleteMemory(id);
+    } catch (e) {
+      console.warn("Notice: Error removing memory doc remotely:", e);
+    }
     setMemories(prev => prev.filter(m => m.id !== id));
   };
 
   const handleClearAllMemories = async () => {
     for (const mem of memories) {
       if (mem.id) {
-        await deleteMemory(mem.id);
+        try {
+          await deleteMemory(mem.id);
+        } catch (e) {
+          console.warn("Notice: Error clearing memory remotely:", e);
+        }
       }
     }
     setMemories([]);
@@ -555,22 +674,36 @@ export function App() {
 
   // Delete session
   const handleDeleteSession = async (id: string) => {
-    if (user?.uid) {
-      try {
-        await deleteDoc(doc(db, 'sessions', id));
-      } catch (err) {
-        console.error("Failed to delete session:", err);
-      }
-    }
+    // 1. Immediately update local UI state
     setSessions(prev => {
       const updated = prev.filter(s => s.id !== id);
       try {
         localStorage.setItem('infbott_sessions', JSON.stringify(updated));
+        localStorage.removeItem(`infbott_messages_${id}`);
+        localStorage.removeItem(`wildstar_messages_${id}`);
       } catch (e) {}
       return updated;
     });
+
     if (currentSessionId === id) {
       handleNewChat();
+    }
+
+    // 2. Delete from Firestore if user is logged in
+    if (user?.uid) {
+      try {
+        // Delete subcollection messages first so Firestore tree remains clean
+        const msgsRef = collection(db, `sessions/${id}/messages`);
+        const msgsSnap = await getDocs(msgsRef).catch(() => null);
+        if (msgsSnap && !msgsSnap.empty) {
+          const deleteOps = msgsSnap.docs.map(d => deleteDoc(d.ref).catch(() => null));
+          await Promise.all(deleteOps);
+        }
+
+        await deleteDoc(doc(db, 'sessions', id));
+      } catch (err: any) {
+        console.warn("Firestore session delete handled:", err?.message || err);
+      }
     }
   };
 
@@ -642,6 +775,59 @@ export function App() {
       setMessages(prev => [...prev, userMsg]);
       setInput('');
       setMessages([]);
+      return;
+    }
+
+    // 1a. Fast Standalone Greeting Router (Sub-100ms response policy)
+    // Standalone greetings such as "hey", "hi", "hello" return immediately without unnecessary provider request
+    const hasMeaningfulContext = messages.length > 0 && messages.some(m => m.role === 'user' && !/^(hi|hello|hey|hey there|hi there|namaste)$/i.test(m.content.trim()));
+    const instantGreeting = attachments.length === 0 ? getInstantReply(trimmedText, hasMeaningfulContext) : null;
+    if (instantGreeting) {
+      let activeSessionId = currentSessionId;
+      if (!activeSessionId) {
+        activeSessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+        const newSessionData = {
+          id: activeSessionId,
+          userId: user?.uid || 'guest',
+          title: 'Greeting',
+          createdAt: Date.now(),
+          updatedAt: Date.now()
+        };
+        if (user?.uid) {
+          setDoc(doc(db, 'sessions', activeSessionId), {
+            ...newSessionData,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          }).catch(console.warn);
+        }
+        setSessions(prev => [newSessionData, ...prev]);
+        setCurrentSessionId(activeSessionId);
+      }
+
+      const userTimestamp = Date.now();
+      const userMsg: Message = {
+        id: `user-${userTimestamp}-${Math.random().toString(36).substr(2, 6)}`,
+        role: 'user',
+        content: trimmedText,
+        attachments: [],
+        timestamp: userTimestamp
+      };
+      const assistantMsg: Message = {
+        id: `assistant-${userTimestamp + 50}-${Math.random().toString(36).substr(2, 6)}`,
+        role: 'assistant',
+        content: instantGreeting,
+        timestamp: userTimestamp + 50,
+        generationTimeMs: 8
+      };
+      setMessages(prev => sortMessagesChronologically([...prev, userMsg, assistantMsg]));
+      setInput('');
+      setAttachments([]);
+
+      if (user?.uid && activeSessionId) {
+        setDoc(doc(db, `sessions/${activeSessionId}/messages`, userMsg.id), userMsg).catch(console.warn);
+        setDoc(doc(db, `sessions/${activeSessionId}/messages`, assistantMsg.id), assistantMsg).catch(console.warn);
+        setDoc(doc(db, 'sessions', activeSessionId), { updatedAt: serverTimestamp() }, { merge: true }).catch(console.warn);
+      }
       return;
     }
 
@@ -727,26 +913,51 @@ export function App() {
         return;
       }
 
+      setAiStatus(isImageEditIntent ? 'Editing image...' : 'Creating image...');
       setUserCredits(prev => Math.max(0, prev - 10));
+
+      let activeSessionId = currentSessionId;
+      if (!activeSessionId) {
+        activeSessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+        const newSessionData = {
+          id: activeSessionId,
+          userId: user?.uid || 'guest',
+          title: trimmedText.slice(0, 30) || 'Image Generation',
+          createdAt: Date.now(),
+          updatedAt: Date.now()
+        };
+        if (user?.uid) {
+          setDoc(doc(db, 'sessions', activeSessionId), {
+            ...newSessionData,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          }).catch(console.warn);
+        }
+        setSessions(prev => [newSessionData, ...prev]);
+        setCurrentSessionId(activeSessionId);
+      }
+
+      const userTimestamp = Date.now();
       const userMsg: Message = {
-        id: `user-${Date.now()}`,
+        id: `user-${userTimestamp}`,
         role: 'user',
         content: trimmedText,
         attachments: attachments.length > 0 ? [...attachments] : (isImageEditIntent && targetImage ? [targetImage] : []),
-        timestamp: Date.now()
+        timestamp: userTimestamp
       };
-      const loadingMsgId = `assistant-loading-${Date.now()}`;
+      const assistantTimestamp = userTimestamp + 50;
+      const loadingMsgId = `assistant-loading-${assistantTimestamp}`;
       const loadingMsg: Message = {
         id: loadingMsgId,
         role: 'assistant',
-        content: isImageEditIntent ? 'Editing image (-10 credits)...' : 'Generating image (-10 credits)...',
-        timestamp: Date.now(),
+        content: isImageEditIntent ? 'Editing image...' : 'Creating image...',
+        timestamp: assistantTimestamp,
         perfStartTime: performance.now(),
         isImageGenerationLoading: true,
         imagePrompt: trimmedText,
         isEdit: isImageEditIntent
       };
-      setMessages(prev => [...prev, userMsg, loadingMsg]);
+      setMessages(prev => sortMessagesChronologically([...prev, userMsg, loadingMsg]));
       setInput('');
       setAttachments([]);
       setIsLoading(true);
@@ -772,9 +983,7 @@ export function App() {
           const successMsg: Message = {
             id: `assistant-img-${Date.now()}`,
             role: 'assistant',
-            content: isImageEditIntent
-              ? `Here is your edited image according to your instructions: "${trimmedText}"\n\n![Edited Image](${data.imageUrl})`
-              : `Here is your generated image for prompt: "${trimmedText}"\n\n![Generated Image](${data.imageUrl})`,
+            content: `![${trimmedText}](${data.imageUrl})`,
             imageUrl: data.imageUrl,
             imagePrompt: trimmedText,
             timestamp: Date.now()
@@ -782,6 +991,11 @@ export function App() {
           setMessages(prev => prev.map(m => m.id === loadingMsgId ? successMsg : m));
           if (typeof data.creditsRemaining === 'number') {
             setUserCredits(data.creditsRemaining);
+          }
+          if (user?.uid && activeSessionId) {
+            setDoc(doc(db, `sessions/${activeSessionId}/messages`, userMsg.id), userMsg).catch(console.warn);
+            setDoc(doc(db, `sessions/${activeSessionId}/messages`, successMsg.id), successMsg).catch(console.warn);
+            setDoc(doc(db, 'sessions', activeSessionId), { updatedAt: serverTimestamp() }, { merge: true }).catch(console.warn);
           }
         }
       } catch (err: any) {
@@ -843,27 +1057,52 @@ export function App() {
       });
     }
 
+    const userTimestamp = Date.now();
     const userMessage: Message = {
-      id: `user-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+      id: `user-${userTimestamp}-${Math.random().toString(36).substr(2, 6)}`,
       role: 'user',
       content: trimmedText,
       attachments: [...attachments],
-      timestamp: Date.now(),
+      timestamp: userTimestamp,
     };
 
-    const assistantMessageId = `assistant-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
-    const startTime = Date.now();
+    // Guarantee assistant timestamp is strictly greater so AI message is always chronologically down/below the user message
+    const assistantTimestamp = userTimestamp + 50;
+    const assistantMessageId = `assistant-${assistantTimestamp}-${Math.random().toString(36).substr(2, 6)}`;
     const perfStart = performance.now();
     const assistantMessage: Message = {
       id: assistantMessageId,
       role: 'assistant',
       content: '',
-      timestamp: startTime,
+      timestamp: assistantTimestamp,
       perfStartTime: perfStart,
       sources: []
     };
 
-    setMessages(prev => [...prev, userMessage, assistantMessage]);
+    // Context-aware dynamic AI status determination
+    const lowerInput = trimmedText.toLowerCase();
+    const hasCodeOrUrl = /https?:\/\/|```|github\.com|stack|trace|error|bug/i.test(trimmedText) || 
+      userMessage.attachments?.some(a => /\.(ts|js|py|json|html|css|c|cpp|go|rs|md|txt)$/i.test(a.name));
+    const hasDocAttachment = userMessage.attachments?.some(a => /\.(pdf|doc|docx|csv|xlsx)$/i.test(a.name));
+    const isRememberIntent = memories.length > 0 && /(remember|who am i|my name|preferences|what do you know)/i.test(lowerInput);
+    const isSearchIntent = isSearchEnabled || /(today|current|news|latest|weather|price|who won|score)/i.test(lowerInput);
+    const isAnalysisIntent = trimmedText.length > 80 || /(explain|analyze|compare|difference|summary|summarize|calculate|evaluate)/i.test(lowerInput);
+
+    if (hasCodeOrUrl) {
+      setAiStatus('Inspecting...');
+    } else if (hasDocAttachment) {
+      setAiStatus('Reading...');
+    } else if (isSearchIntent) {
+      setAiStatus('Checking...');
+    } else if (isRememberIntent) {
+      setAiStatus('Remembering...');
+    } else if (isAnalysisIntent) {
+      setAiStatus('Analysing...');
+    } else {
+      setAiStatus('INFBOTT is Thinking...');
+    }
+
+    setMessages(prev => sortMessagesChronologically([...prev, userMessage, assistantMessage]));
     setInput('');
     setAttachments([]);
     setIsLoading(true);
@@ -898,11 +1137,37 @@ export function App() {
         0.7, 
         isSearchEnabled,
         idToken,
-        memories
+        memories,
+        profileData.customSystemInstructions
       );
 
       let lastUpdateTime = Date.now();
       for await (const chunk of stream) {
+        if (chunk.type === 'error') {
+          const errorMessageText = chunk.message || "An issue occurred while generating the response. Please retry.";
+          const perfEnd = performance.now();
+          const genTime = perfEnd - perfStart;
+          setMessages(prev => 
+            prev.map(m => m.id === assistantMessageId ? {
+              ...m,
+              content: errorMessageText,
+              isError: true,
+              canRetry: true,
+              generationTimeMs: genTime
+            } : m)
+          );
+          if (user?.uid && sessionId) {
+            setDoc(doc(db, `sessions/${sessionId}/messages`, assistantMessageId), {
+              ...assistantMessage,
+              content: errorMessageText,
+              isError: true,
+              canRetry: true,
+              generationTimeMs: genTime
+            }).catch(console.warn);
+          }
+          return;
+        }
+
         if (chunk.type === 'text' && chunk.content) {
           fullContent += chunk.content;
           const now = Date.now();
@@ -959,34 +1224,49 @@ export function App() {
         playVoiceResponse(fullContent);
       }
     } catch (error: any) {
-      console.error('Error in handleSend:', error);
-      let errorMessage = error?.message || 'Sorry, I encountered an error.';
-      
-      try {
-        if (typeof errorMessage === 'string' && errorMessage.trim().startsWith('{')) {
-          const parsed = JSON.parse(errorMessage);
-          if (parsed.error && parsed.error.message) {
-            errorMessage = parsed.error.message;
-          }
-          if (typeof errorMessage === 'string' && errorMessage.trim().startsWith('{')) {
-            const innerParsed = JSON.parse(errorMessage);
-            if (innerParsed.error && innerParsed.error.message) {
-              errorMessage = innerParsed.error.message;
-            }
-          }
-        }
-      } catch (e) {
-        // Fallback to original message if not valid JSON
-      }
+      console.warn('Chat stream error:', error?.message || error);
+      const perfEnd = performance.now();
+      const genTime = perfEnd - perfStart;
+      const errorMessageText = error?.message || "The connection to the AI provider was interrupted. Please retry.";
 
       setMessages(prev => 
         prev.map(m => m.id === assistantMessageId ? {
           ...m,
-          content: `⚠️ **INFBOTT Error:** ${errorMessage}\n\n*Please verify your connection and try again.*`
+          content: errorMessageText,
+          isError: true,
+          canRetry: true,
+          generationTimeMs: genTime
         } : m)
       );
+
+      if (user?.uid && sessionId) {
+        try {
+          await setDoc(doc(db, `sessions/${sessionId}/messages`, assistantMessageId), {
+            ...assistantMessage,
+            content: errorMessageText,
+            isError: true,
+            canRetry: true,
+            generationTimeMs: genTime
+          });
+        } catch (e) {}
+      }
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Dedicated handler to retry a failed response
+  const handleRetry = (assistantMsgId: string) => {
+    if (isLoading) return;
+    const msgIndex = messages.findIndex(m => m.id === assistantMsgId);
+    if (msgIndex <= 0) return;
+    const prevUserMsg = messages[msgIndex - 1];
+    if (prevUserMsg && prevUserMsg.role === 'user') {
+      setMessages(prev => prev.filter(m => m.id !== assistantMsgId));
+      if (prevUserMsg.attachments) {
+        setAttachments([...prevUserMsg.attachments]);
+      }
+      handleSend(prevUserMsg.content);
     }
   };
 
@@ -1192,9 +1472,49 @@ export function App() {
           onOpenNotebook={() => setIsNotebookOpen(true)}
           notebookCount={notebookSnippets.length}
           userCredits={userCredits}
-          onOpenLiveVoice={() => setIsLiveVoiceOpen(prev => !prev)}
-          isLiveVoiceOpen={isLiveVoiceOpen}
+          onOpenTopUp={() => setIsTopUpModalOpen(true)}
         />
+
+        {/* Warning notification when user's credit balance drops below 20 credits, suggesting a top-up */}
+        <AnimatePresence>
+          {userCredits < 20 && !isLowCreditDismissed && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="overflow-hidden bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-amber-500/10 border-b border-amber-500/30 backdrop-blur-md px-3 sm:px-6 py-2.5 z-20 shadow-md shrink-0"
+            >
+              <div className="max-w-4xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="p-1 rounded-lg bg-amber-500/20 text-amber-300 shrink-0">
+                    <AlertTriangle size={15} className="animate-pulse" />
+                  </div>
+                  <div className="text-white/90">
+                    <span className="font-bold text-amber-300 mr-1.5">Low Balance Warning:</span>
+                    <span>You have only <strong className="text-amber-200 font-mono font-bold">{userCredits} credit{userCredits === 1 ? '' : 's'}</strong> remaining. Top up your balance to keep generating images and running advanced requests without interruption.</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                  <button
+                    onClick={() => setIsTopUpModalOpen(true)}
+                    className="px-3.5 py-1.5 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black font-bold text-xs transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Zap size={13} className="fill-black" />
+                    <span>Top Up Now</span>
+                  </button>
+                  <button
+                    onClick={() => setIsLowCreditDismissed(true)}
+                    className="p-1 hover:bg-white/10 rounded-full text-white/50 hover:text-white transition-colors cursor-pointer"
+                    title="Dismiss warning for this session"
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Messages Stream View */}
         <div 
@@ -1203,7 +1523,7 @@ export function App() {
           className="flex-1 overflow-y-auto px-3 sm:px-6 custom-scrollbar"
         >
           <div className="max-w-3xl mx-auto py-6">
-            {messages.length === 0 ? (
+            {displayMessages.length === 0 ? (
               <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-8 text-center">
                 <div className="space-y-3">
                   <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-[#4285f4] to-[#9b72cb] flex items-center justify-center mx-auto shadow-2xl border border-white/10">
@@ -1226,7 +1546,7 @@ export function App() {
               </div>
             ) : (
               <div className="space-y-6">
-                {messages.map((msg, mIdx) => (
+                {displayMessages.map((msg, mIdx) => (
                   <motion.div 
                     key={msg.id ? `msg-${msg.id}` : `msg-idx-${mIdx}`}
                     initial={{ opacity: 0, y: 5 }}
@@ -1269,8 +1589,24 @@ export function App() {
                         </div>
                       )}
 
-                      {/* Image Generation Loader or Standard Markdown text */}
-                      {msg.isImageGenerationLoading ? (
+                      {/* Error Card with Retry Button, Image Generation Loader, or Standard Markdown */}
+                      {msg.isError ? (
+                        <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-200 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            <AlertCircle size={16} className="text-red-400 shrink-0" />
+                            <span className="leading-relaxed">{msg.content}</span>
+                          </div>
+                          {msg.canRetry && (
+                            <button
+                              onClick={() => handleRetry(msg.id)}
+                              className="px-3 py-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-white font-semibold text-xs transition-colors flex items-center gap-1.5 cursor-pointer shrink-0"
+                            >
+                              <RotateCw size={12} />
+                              <span>Retry</span>
+                            </button>
+                          )}
+                        </div>
+                      ) : msg.isImageGenerationLoading ? (
                         <ImageGenerationLoader 
                           prompt={msg.imagePrompt || ''}
                           isEdit={msg.isEdit}
@@ -1299,7 +1635,7 @@ export function App() {
                                 );
                               },
                               a({ href, children }: any) {
-                                if (href && (href.startsWith('data:image/') || href.startsWith('https://image.pollinations.ai/') || /\.(png|jpe?g|webp|gif|svg)($|\?)/i.test(href))) {
+                                if (href && (href.startsWith('data:image/') || /\.(png|jpe?g|webp|gif|svg)($|\?)/i.test(href))) {
                                   return (
                                     <ChatImageCard 
                                       src={href} 
@@ -1429,23 +1765,12 @@ export function App() {
                         </div>
                       )}
 
-                      {/* Loading Status - Numbers Only for text chat */}
-                      {isLoading && msg.role === 'assistant' && !msg.isImageGenerationLoading && mIdx === messages.length - 1 && (
-                        <div className="mt-4 pt-3 border-t border-white/5">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[10px] font-medium text-[#4285f4] uppercase tracking-wider flex items-center gap-1.5">
-                              <Sparkles size={10} className="animate-pulse" />
-                              Generating response...
-                            </span>
-                            <span className="text-[12px] font-bold text-[#4285f4] font-mono flex items-center gap-2">
-                              {msg.perfStartTime && (
-                                <span className="opacity-70 text-[10px]">
-                                  <GenerationTimer perfStartTime={msg.perfStartTime} />
-                                </span>
-                              )}
-                              <span>{Math.min(99, Math.max(5, msg.perfStartTime ? Math.min(95, Math.floor(((performance.now() - msg.perfStartTime) / 2500) * 90) + 10) : Math.floor(((typeof msg.content === 'string' ? msg.content.length : 0) / ((typeof msg.content === 'string' ? msg.content.length : 0) + 300)) * 100)))}%</span>
-                            </span>
-                          </div>
+                      {/* Clean typing indicator while waiting for first token */}
+                      {isLoading && msg.role === 'assistant' && !msg.isImageGenerationLoading && mIdx === displayMessages.length - 1 && !msg.content && (
+                        <div className="flex items-center gap-1.5 py-1 px-1">
+                          <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+                          <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse [animation-delay:200ms]" />
+                          <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse [animation-delay:400ms]" />
                         </div>
                       )}
 
@@ -1473,9 +1798,9 @@ export function App() {
                         </div>
                       )}
 
-                      {/* Assistant Response Footer: Generation Time & Estimated Reading Time */}
-                      {msg.role === 'assistant' && (msg.content || msg.imageUrl) && (!isLoading || mIdx !== messages.length - 1) && (
-                        <div className="mt-3 pt-2.5 border-t border-white/5 flex items-center justify-between text-[11px] text-[#8e918f] select-none">
+                      {/* Assistant Response Footer: Generation Time, Estimated Reading Time & Reaction Buttons */}
+                      {msg.role === 'assistant' && (msg.content || msg.imageUrl) && (!isLoading || mIdx !== displayMessages.length - 1) && (
+                        <div className="mt-3 pt-2.5 border-t border-white/5 flex flex-wrap items-center justify-between gap-2 text-[11px] text-[#8e918f] select-none">
                           <div className="flex items-center gap-3">
                             {msg.generationTimeMs !== undefined && (
                               <span className="flex items-center gap-1 font-mono text-[#4285f4] font-medium" title="AI Generation Latency">
@@ -1494,12 +1819,54 @@ export function App() {
                             </span>
                           </div>
 
-                          {msg.timestamp && (
-                            <span className="flex items-center gap-1 text-[10px] text-white/40">
-                              <Clock size={10} className="text-white/30" />
-                              <span>{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                            </span>
-                          )}
+                          <div className="flex items-center gap-1.5">
+                            {/* Firestore Reaction Buttons */}
+                            <button
+                              onClick={() => handleReaction(msg.id, 'thumbs_up')}
+                              className={cn(
+                                "p-1.5 rounded-lg transition-colors flex items-center gap-1 cursor-pointer",
+                                msg.reaction === 'thumbs_up' 
+                                  ? "bg-blue-500/20 text-blue-400" 
+                                  : "hover:bg-white/10 text-[#8e918f] hover:text-white"
+                              )}
+                              title="Helpful (Like)"
+                            >
+                              <ThumbsUp size={12} className={msg.reaction === 'thumbs_up' ? "fill-blue-400" : ""} />
+                            </button>
+
+                            <button
+                              onClick={() => handleReaction(msg.id, 'heart')}
+                              className={cn(
+                                "p-1.5 rounded-lg transition-colors flex items-center gap-1 cursor-pointer",
+                                msg.reaction === 'heart' 
+                                  ? "bg-rose-500/20 text-rose-400" 
+                                  : "hover:bg-white/10 text-[#8e918f] hover:text-white"
+                              )}
+                              title="Loved this response (Heart)"
+                            >
+                              <Heart size={12} className={msg.reaction === 'heart' ? "fill-rose-400" : ""} />
+                            </button>
+
+                            <button
+                              onClick={() => handleReaction(msg.id, 'thumbs_down')}
+                              className={cn(
+                                "p-1.5 rounded-lg transition-colors flex items-center gap-1 cursor-pointer",
+                                msg.reaction === 'thumbs_down' 
+                                  ? "bg-amber-500/20 text-amber-400" 
+                                  : "hover:bg-white/10 text-[#8e918f] hover:text-white"
+                              )}
+                              title="Needs improvement (Dislike)"
+                            >
+                              <ThumbsDown size={12} className={msg.reaction === 'thumbs_down' ? "fill-amber-400" : ""} />
+                            </button>
+
+                            {msg.timestamp && (
+                              <span className="ml-1.5 flex items-center gap-1 text-[10px] text-white/40">
+                                <Clock size={10} className="text-white/30" />
+                                <span>{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                              </span>
+                            )}
+                          </div>
                         </div>
                       )}
 
@@ -1578,7 +1945,7 @@ export function App() {
                         <div className="w-1.5 h-1.5 bg-[#4285f4] rounded-full animate-bounce [animation-delay:0.2s]" />
                         <div className="w-1.5 h-1.5 bg-[#4285f4] rounded-full animate-bounce [animation-delay:0.4s]" />
                       </div>
-                      <span className="text-xs text-[#8e918f]">INFBOTT is thinking...</span>
+                      <span className="text-xs text-[#8e918f]">{aiStatus}</span>
                     </div>
                   </div>
                 )}
@@ -1622,8 +1989,6 @@ export function App() {
           handleSummarizeChat={handleSummarizeChat}
           setIsFeedbackModalOpen={setIsFeedbackModalOpen}
           currentSessionId={currentSessionId}
-          onOpenLiveVoice={() => setIsLiveVoiceOpen(prev => !prev)}
-          isLiveVoiceOpen={isLiveVoiceOpen}
         />
       </main>
 
@@ -1673,6 +2038,8 @@ export function App() {
         memories={memories}
         onDeleteMemory={handleDeleteMemory}
         onClearAllMemories={handleClearAllMemories}
+        userCredits={userCredits}
+        onOpenTopUp={() => setIsTopUpModalOpen(true)}
         onSignOut={async () => {
           await signOut(auth);
           setIsProfileModalOpen(false);
@@ -1695,12 +2062,15 @@ export function App() {
         onRegenerate={handleRegenerateImage}
       />
 
-      <LiveVoiceModal
-        isOpen={isLiveVoiceOpen}
-        onClose={() => setIsLiveVoiceOpen(false)}
-        idToken={userIdToken}
-        history={liveVoiceHistory}
-        onMessageLogged={handleLiveVoiceMessageLogged}
+      <CreditTopUpModal 
+        isOpen={isTopUpModalOpen}
+        onClose={() => setIsTopUpModalOpen(false)}
+        userCredits={userCredits}
+        onTopUpSuccess={(newCredits) => {
+          setUserCredits(newCredits);
+          setIsLowCreditDismissed(false);
+        }}
+        user={user}
       />
     </div>
   );

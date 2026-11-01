@@ -39,7 +39,7 @@ export const ModelSelector = ({
     >
       <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
       <span className="text-[#e3e3e3] tracking-wide font-bold">INFBOTT</span>
-      <span className="text-[#8e918f] text-xs font-normal">{currentModel === 'fast' ? '2.5 Flash' : '2.5 Pro'}</span>
+      <span className="text-[#8e918f] text-xs font-normal">{currentModel === 'fast' ? '3.8 Flash' : '4.0 Argon'}</span>
       <ChevronRight size={14} className={cn("text-[#8e918f] transition-transform", isOpen && "rotate-90")} />
     </button>
     <AnimatePresence>
@@ -62,7 +62,7 @@ export const ModelSelector = ({
               <div className="flex items-center gap-3">
                 <Zap size={18} className="text-[#4285f4]" />
                 <div className="text-left">
-                  <div className="text-sm font-bold text-white">2.5 Flash</div>
+                  <div className="text-sm font-bold text-white">3.8 Flash</div>
                   <div className="text-[10px] text-[#8e918f]">Fast, intelligent & highly responsive</div>
                 </div>
               </div>
@@ -78,8 +78,8 @@ export const ModelSelector = ({
               <div className="flex items-center gap-3">
                 <Brain size={18} className="text-[#9b72cb]" />
                 <div className="text-left">
-                  <div className="text-sm font-bold text-white">2.5 Pro</div>
-                  <div className="text-[10px] text-[#8e918f]">Advanced reasoning, math & architecture</div>
+                  <div className="text-sm font-bold text-white">4.0 Argon (Pro)</div>
+                  <div className="text-[10px] text-[#8e918f]">Advanced reasoning, math, coding & architecture</div>
                 </div>
               </div>
               {currentModel === 'pro' && <Check size={16} className="text-[#9b72cb]" />}
