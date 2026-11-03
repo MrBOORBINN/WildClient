@@ -128,7 +128,7 @@ const InputBar: React.FC<InputBarProps> = ({
   };
 
   return (
-    <div className="p-3 sm:p-4 bg-gradient-to-t from-[#131314] via-[#131314]/90 to-transparent">
+    <div className="p-3 sm:p-4 bg-gradient-to-t from-[#000000] via-[#000000]/95 to-transparent">
       <div className="max-w-3xl mx-auto">
         {/* Attachment preview cards */}
         <AnimatePresence>
@@ -137,16 +137,16 @@ const InputBar: React.FC<InputBarProps> = ({
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 10 }}
-              className="flex flex-wrap gap-2.5 mb-2.5 p-2 bg-[#1e1f20]/80 rounded-2xl border border-white/10 backdrop-blur-md"
+              className="flex flex-wrap gap-2.5 mb-2.5 p-2 bg-[#1A1A1A] rounded-2xl border border-[#414141] backdrop-blur-md"
             >
               {attachments.map((att, idx) => (
                 <div 
                   key={`att-${idx}-${att.name}`}
-                  className="relative group bg-black/40 rounded-xl overflow-hidden border border-white/10 flex items-center p-1.5 gap-2 shadow-md"
+                  className="relative group bg-[#2C2C2C] rounded-xl overflow-hidden border border-[#414141] flex items-center p-1.5 gap-2 shadow-md"
                 >
                   {/* Rich Image Thumbnail */}
                   {att.type === 'image' && att.data ? (
-                    <div className="relative w-12 h-12 rounded-lg overflow-hidden bg-black/60 shrink-0 border border-white/10">
+                    <div className="relative w-12 h-12 rounded-lg overflow-hidden bg-black/60 shrink-0 border border-[#414141]">
                       <img 
                         src={att.data} 
                         alt={att.name || "Uploaded image"} 
@@ -158,24 +158,24 @@ const InputBar: React.FC<InputBarProps> = ({
                       <FileText size={18} />
                     </div>
                   ) : (
-                    <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0 text-blue-400">
+                    <div className="w-10 h-10 rounded-lg bg-[#9b72cb]/20 flex items-center justify-center shrink-0 text-[#9b72cb]">
                       <FileCode size={18} />
                     </div>
                   )}
 
                   <div className="pr-1 text-left min-w-0 max-w-[130px] sm:max-w-[170px]">
                     <div className="text-[11px] font-semibold text-white truncate">{att.name}</div>
-                    <div className="text-[9px] text-[#8e918f] uppercase font-mono">
+                    <div className="text-[9px] text-[#A0A0A0] uppercase font-mono">
                       {att.type === 'image' ? 'Image Ready' : 'Document'}
                     </div>
                   </div>
 
                   {/* Actions: Replace & Remove */}
-                  <div className="flex items-center gap-1 pl-1 border-l border-white/10">
+                  <div className="flex items-center gap-1 pl-1 border-l border-[#414141]">
                     {att.type === 'image' && (
                       <button 
                         onClick={() => handleReplaceImage(idx)}
-                        className="p-1 rounded-md hover:bg-white/10 text-white/60 hover:text-white transition-colors"
+                        className="p-1 rounded-md hover:bg-[#383838] text-[#A0A0A0] hover:text-white transition-colors"
                         title="Replace image"
                       >
                         <RefreshCw size={11} />
@@ -183,7 +183,7 @@ const InputBar: React.FC<InputBarProps> = ({
                     )}
                     <button 
                       onClick={() => removeAttachment(idx)}
-                      className="p-1 rounded-md hover:bg-red-500/20 text-white/60 hover:text-red-400 transition-colors"
+                      className="p-1 rounded-md hover:bg-red-500/20 text-[#A0A0A0] hover:text-red-400 transition-colors"
                       title="Remove attachment"
                     >
                       <X size={12} />
@@ -196,7 +196,7 @@ const InputBar: React.FC<InputBarProps> = ({
         </AnimatePresence>
 
         {/* Input Card */}
-        <div className="glass-card rounded-[24px] p-2 flex items-center gap-1.5 shadow-2xl border border-white/10 relative">
+        <div className="bg-[#111111] rounded-[24px] p-2 flex items-center gap-1.5 shadow-2xl border border-[#414141] relative">
           {/* Add / Attachment Button */}
           <div className="relative">
             <input 
@@ -204,7 +204,7 @@ const InputBar: React.FC<InputBarProps> = ({
               ref={fileInputRef} 
               onChange={onFileInputChange} 
               multiple 
-              accept="image/*,application/pdf,.docx,.txt,.csv,.json,.js,.ts,.tsx,.jsx,.py,.html,.css,.sql,.sh,.md,.yaml,.yml"
+              accept="image/*,video/*,audio/*,application/pdf,.docx,.txt,.csv,.json,.js,.ts,.tsx,.jsx,.py,.html,.css,.sql,.sh,.md,.yaml,.yml"
               className="hidden" 
             />
             <button 
@@ -212,8 +212,8 @@ const InputBar: React.FC<InputBarProps> = ({
                 replaceIndexRef.current = null;
                 fileInputRef.current?.click();
               }}
-              className="p-2 hover:bg-white/10 rounded-full transition-colors text-[#8e918f] hover:text-white cursor-pointer"
-              title="Attach Images, Camera Photos, or Files"
+              className="p-2 hover:bg-[#1A1A1A] rounded-full transition-colors text-[#A0A0A0] hover:text-white cursor-pointer"
+              title="Attach Images, Video, Audio, or Documents"
               aria-label="Upload file or photo"
             >
               <Upload size={18} />
@@ -225,16 +225,16 @@ const InputBar: React.FC<InputBarProps> = ({
             <button
               onClick={() => setIsSearchEnabled(!isSearchEnabled)}
               className={cn(
-                "hidden sm:flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-semibold transition-all border shrink-0",
+                "hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-all border shrink-0",
                 isSearchEnabled 
-                  ? "bg-blue-500/10 text-blue-400 border-blue-500/30" 
-                  : "bg-white/5 text-[#8e918f] border-transparent hover:text-white"
+                  ? "bg-[#9b72cb]/20 text-[#9b72cb] border-[#9b72cb]/40" 
+                  : "bg-[#1A1A1A] text-[#A0A0A0] border-transparent hover:text-white"
               )}
               title={isSearchEnabled ? "Live Web Research Grounding is ON" : "Click to enable Web Research"}
             >
               <Search size={12} />
               <span>Web</span>
-              {isSearchEnabled && <Check size={10} className="text-blue-400" />}
+              {isSearchEnabled && <Check size={10} className="text-[#9b72cb]" />}
             </button>
           )}
 
@@ -245,7 +245,7 @@ const InputBar: React.FC<InputBarProps> = ({
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={attachments.some(a => a.type === 'image') ? "Ask about this image, or say how to edit it..." : "Message INFBOTT or ask to generate an image..."}
-            className="flex-1 bg-transparent border-none focus:ring-0 text-sm text-[#e3e3e3] placeholder:text-[#8e918f] py-2 px-1 outline-none min-w-0"
+            className="flex-1 bg-transparent border-none focus:ring-0 text-sm text-white placeholder:text-[#A0A0A0] py-2 px-1 outline-none min-w-0"
           />
 
           <div className="flex items-center gap-1">
@@ -253,7 +253,7 @@ const InputBar: React.FC<InputBarProps> = ({
             <button 
               onClick={() => handleSend()}
               disabled={isLoading || (!input.trim() && attachments.length === 0)}
-              className="p-2 bg-[#4285f4] text-white rounded-full shadow-lg hover:bg-[#4285f4]/80 transition-all disabled:opacity-40 disabled:cursor-not-allowed hover:scale-105 cursor-pointer"
+              className="p-2 bg-[#9b72cb] text-white rounded-full shadow-lg hover:bg-[#8a5bbd] transition-all disabled:opacity-40 disabled:cursor-not-allowed hover:scale-105 cursor-pointer shadow-[#9b72cb]/20"
               title="Send message"
               aria-label="Send message"
             >
@@ -263,7 +263,7 @@ const InputBar: React.FC<InputBarProps> = ({
         </div>
 
         {/* Disclaimer footer */}
-        <p className="text-[10px] text-center text-[#8e918f] mt-2">
+        <p className="text-[10px] text-center text-[#A0A0A0] mt-2">
           INFBOTT can make mistakes. Verify important facts, code, and documents.
         </p>
       </div>

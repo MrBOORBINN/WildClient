@@ -104,6 +104,8 @@ import { HighlightFloatingMenu } from './components/HighlightFloatingMenu';
 import { CodePreviewModal } from './components/CodePreviewModal';
 import CloudConsole from './components/CloudConsole';
 import ProfileModal from './components/ProfileModal';
+import { SettingsView } from './components/settings/SettingsView';
+import { DynamicWidget } from './components/chat/DynamicWidget';
 import { ImageGenerationLoader } from './components/ImageGenerationLoader';
 import { ChatImageCard } from './components/ChatImageCard';
 import { ImageGalleryModal, GalleryImage } from './components/ImageGalleryModal';
@@ -1432,7 +1434,7 @@ export function App() {
   const currentSessionTitle = currentSession?.title || 'New Conversation';
 
   return (
-    <div className="flex h-screen bg-[#131314] text-[#e3e3e3] overflow-hidden font-sans select-text relative">
+    <div className="flex h-screen bg-[#000000] text-white overflow-hidden font-sans select-text relative">
       {/* Dynamic Background */}
       <LiquidBackground imageUrl={appBackground} />
 
@@ -1520,13 +1522,13 @@ export function App() {
         <div 
           onMouseUp={handleTextSelection}
           onTouchEnd={handleTextSelection}
-          className="flex-1 overflow-y-auto px-3 sm:px-6 custom-scrollbar"
+          className="flex-1 overflow-y-auto px-3 sm:px-6 custom-scrollbar bg-[#000000]"
         >
           <div className="max-w-3xl mx-auto py-6">
             {displayMessages.length === 0 ? (
               <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-8 text-center">
                 <div className="space-y-3">
-                  <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-[#4285f4] to-[#9b72cb] flex items-center justify-center mx-auto shadow-2xl border border-white/10">
+                  <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-[#ff4e00] to-[#9b72cb] flex items-center justify-center mx-auto shadow-2xl border border-[#414141]">
                     <Sparkles size={32} className="text-white" />
                   </div>
                   <motion.h2 
@@ -1536,10 +1538,10 @@ export function App() {
                   >
                     Hi {profileData?.fullName?.split(' ')[0] || 'there'}, how can INFBOTT help?
                   </motion.h2>
-                  <p className="text-[#8e918f] text-sm max-w-lg mx-auto">
-                    Advanced software development, Minecraft world/schematic generation, and 3D modeling.
+                  <p className="text-[#A0A0A0] text-sm max-w-lg mx-auto">
+                    Advanced software engineering, interactive reasoning, media analysis, and creative architecture.
                   </p>
-                  <p className="text-[#4285f4] text-xs font-medium">
+                  <p className="text-[#9b72cb] text-xs font-medium">
                     नमस्ते! मैं आपकी कैसे मदद कर सकता हूँ? (Hindi & Hinglish supported)
                   </p>
                 </div>
@@ -1557,16 +1559,16 @@ export function App() {
                     )}
                   >
                     {msg.role === 'assistant' && (
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#4285f4] to-[#9b72cb] flex items-center justify-center shrink-0 mt-0.5 shadow-md">
-                        <Sparkles size={14} className="text-white" />
+                      <div className="w-8 h-8 rounded-full bg-[#1A1A1A] border border-[#414141] flex items-center justify-center shrink-0 mt-0.5 shadow-md">
+                        <Sparkles size={14} className="text-[#9b72cb]" />
                       </div>
                     )}
 
                     <div className={cn(
                       "max-w-[88%] rounded-2xl p-4 text-sm group relative shadow-sm",
                       msg.role === 'user' 
-                        ? "bg-[#252629] text-white border border-white/10" 
-                        : "bg-[#1e1f20]/90 text-[#e3e3e3] border border-white/5"
+                        ? "bg-[#2C2C2C] text-white border border-[#414141]" 
+                        : "bg-[#111111] text-white border border-[#414141]/50"
                     )}>
                       {/* Attachments preview inside message */}
                       {msg.attachments && msg.attachments.length > 0 && (
@@ -1658,6 +1660,19 @@ export function App() {
                                 const codeString = String(children).replace(/\n$/, '');
                                 const lang = match ? match[1] : '';
                                 const isRunnable = isCodeRunnable(lang, codeString);
+
+                                if (lang.startsWith('widget:')) {
+                                  const widgetType = lang.split(':')[1];
+                                  try {
+                                    const parsedData = JSON.parse(codeString);
+                                    return (
+                                      <DynamicWidget 
+                                        data={{ ...parsedData, type: widgetType as any }} 
+                                        onAction={(act) => handleSend(act)} 
+                                      />
+                                    );
+                                  } catch (e) {}
+                                }
 
                                 if (lang === 'zip' || lang === 'schematic' || lang === 'nbt' || lang === 'schem') {
                                   const fileType = (lang === 'nbt' || lang === 'schem') ? 'schem' : lang;
@@ -2029,7 +2044,7 @@ export function App() {
         gallery={curatedBackgrounds}
       />
 
-      <ProfileModal 
+      <SettingsView 
         isOpen={isProfileModalOpen}
         onClose={() => setIsProfileModalOpen(false)}
         user={user}
@@ -2038,15 +2053,18 @@ export function App() {
         memories={memories}
         onDeleteMemory={handleDeleteMemory}
         onClearAllMemories={handleClearAllMemories}
+        sessions={sessions}
+        onClearAllSessions={async () => {
+          for (const s of sessions) {
+            await handleDeleteSession(s.id);
+          }
+          setSessions([]);
+        }}
         userCredits={userCredits}
         onOpenTopUp={() => setIsTopUpModalOpen(true)}
         onSignOut={async () => {
           await signOut(auth);
           setIsProfileModalOpen(false);
-        }}
-        onOpenCloudConsole={() => {
-          setIsProfileModalOpen(false);
-          setIsCloudConsoleOpen(true);
         }}
       />
 

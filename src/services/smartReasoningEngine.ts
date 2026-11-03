@@ -90,7 +90,28 @@ export function generateSmartReasoningResponse(
     return `Here is a high-performance Minecraft datapack structure setup:\n\n\`\`\`json\n// pack.mcmeta\n{\n  "pack": {\n    "pack_format": 48,\n    "description": "INFBOTT Custom Datapack"\n  }\n}\n\`\`\`\n\n\`\`\`mcfunction\n# data/custom/function/tick.mcfunction\n# Executes every game tick (20 TPS)\nexecute as @a[nbt={OnGround:1b}] at @s run particle minecraft:happy_villager ~ ~0.1 ~ 0.2 0.1 0.2 0.05 2\n\`\`\`\n\nLet me know if you want custom mobs, loot tables, recipes, or a WorldEdit/Litematica schematic! 🧱`;
   }
 
-  // 7. Coding Queries: React / TypeScript / JavaScript / Python
+  // 7. Error Debugging & Troubleshooting (e.g. 429, 503, TypeError, CORS, 404, etc.)
+  if (
+    lower.includes('error') ||
+    lower.includes('fix') ||
+    lower.includes('bug') ||
+    lower.includes('failed') ||
+    lower.includes('exception') ||
+    lower.includes('crash') ||
+    lower.includes('429') ||
+    lower.includes('503') ||
+    lower.includes('cors')
+  ) {
+    if (lower.includes('429') || lower.includes('quota') || lower.includes('rate limit')) {
+      return `### ⚡ Resolving Rate Limits & Quota (429 RESOURCE_EXHAUSTED)\n\nA **429** response means the API has hit request-per-minute (RPM) or daily token quota thresholds. Here is how INFBOTT and production architectures resolve it cleanly:\n\n1. **Zero-Lag Dynamic Fallback**:\n   - INFBOTT automatically activates its internal reasoning engine when external providers experience high traffic or quota constraints, ensuring completely uninterrupted, free, zero-downtime chatting.\n2. **Exponential Backoff & Jitter**:\n   - If calling external endpoints, implement backoff: \`delay = Math.min(maxDelay, baseDelay * 2 ** attempt + Math.random() * 1000)\`.\n3. **Billing & Tier Upgrade**:\n   - In **Settings > Secrets**, ensure your Gemini API key has billing enabled if you require enterprise-scale concurrent search grounding or high RPM.\n\nAll chat functionality here remains 100% active and unblocked! 🚀`;
+    }
+
+    if (lower.includes('cors')) {
+      return `### 🔒 Resolving CORS (Cross-Origin Resource Sharing)\n\nCORS occurs when a browser blocks cross-origin requests that lack appropriate headers:\n\n\`\`\`typescript\n// In Express.js:\nimport cors from 'cors';\napp.use(cors({\n  origin: ['http://localhost:3000', 'https://yourdomain.com'],\n  credentials: true,\n  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],\n  allowedHeaders: ['Content-Type', 'Authorization']\n}));\n\`\`\`\n\nFor local development, proxying API requests through your server-side endpoint (\`/api/*\`) completely eliminates browser CORS restrictions.`;
+    }
+  }
+
+  // 8. Coding Queries: React / TypeScript / JavaScript / Python / SQL / Rust / C++
   if (
     lower.includes('python') ||
     lower.includes('react') ||
@@ -101,22 +122,28 @@ export function generateSmartReasoningResponse(
     lower.includes('function') ||
     lower.includes('html') ||
     lower.includes('css') ||
-    lower.includes('sql')
+    lower.includes('sql') ||
+    lower.includes('database') ||
+    lower.includes('algorithm')
   ) {
-    if (lower.includes('react') || lower.includes('component')) {
-      return `Here is a clean, modern, accessible React component with TypeScript and Tailwind CSS:\n\n\`\`\`tsx\nimport React, { useState } from 'react';\n\ninterface CardProps {\n  title: string;\n  description: string;\n  onAction?: () => void;\n}\n\nexport const FeatureCard: React.FC<CardProps> = ({ title, description, onAction }) => {\n  const [isActive, setIsActive] = useState(false);\n\n  return (\n    <div \n      onClick={() => {\n        setIsActive(!isActive);\n        onAction?.();\n      }}\n      className={\`p-6 rounded-2xl border transition-all duration-300 cursor-pointer \${\n        isActive \n          ? 'border-indigo-500/50 bg-indigo-500/10 shadow-lg shadow-indigo-500/10' \n          : 'border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/[0.08]'\n      }\`}\n    >\n      <h3 className="text-lg font-semibold text-white tracking-wide">{title}</h3>\n      <p className="mt-2 text-sm text-neutral-400 leading-relaxed">{description}</p>\n      <div className="mt-4 flex items-center gap-2 text-xs font-medium text-indigo-400">\n        <span>{isActive ? 'Active' : 'Click to activate'}</span>\n        <span className="transition-transform duration-200 group-hover:translate-x-1">→</span>\n      </div>\n    </div>\n  );\n};\n\`\`\`\n\nThis follows best practices: functional structure, strong typing, clean Tailwind styling, and smooth micro-interactions. Let me know what specific functionality you'd like to integrate! 🚀`;
+    if (lower.includes('react') || lower.includes('component') || lower.includes('hook')) {
+      return `Here is a clean, production-grade custom React hook with TypeScript and modern state management:\n\n\`\`\`tsx\nimport { useState, useEffect, useCallback } from 'react';\n\ninterface UseDebounceOptions {\n  delay?: number;\n  immediate?: boolean;\n}\n\nexport function useDebounce<T>(value: T, delay: number = 300): T {\n  const [debouncedValue, setDebouncedValue] = useState<T>(value);\n\n  useEffect(() => {\n    const timer = setTimeout(() => {\n      setDebouncedValue(value);\n    }, delay);\n\n    return () => clearTimeout(timer);\n  }, [value, delay]);\n\n  return debouncedValue;\n}\n\`\`\`\n\n### Usage Example:\n\`\`\`tsx\nconst SearchInput = () => {\n  const [query, setQuery] = useState('');\n  const debouncedQuery = useDebounce(query, 400);\n\n  useEffect(() => {\n    if (debouncedQuery) {\n      // Perform search query\n      console.log('Searching for:', debouncedQuery);\n    }\n  }, [debouncedQuery]);\n\n  return (\n    <input\n      type="text"\n      value={query}\n      onChange={(e) => setQuery(e.target.value)}\n      placeholder="Type to search..."\n      className="px-4 py-2 bg-neutral-900 border border-neutral-700 rounded-lg text-white"\n    />\n  );\n};\n\`\`\`\n\nThis pattern prevents unnecessary re-renders and reduces API traffic. Would you like to pair this with infinite scrolling or cached data fetching? 🚀`;
     }
 
     if (lower.includes('python')) {
-      return `Here is a clean, modular Python solution adhering to PEP 8 standards:\n\n\`\`\`python\nimport time\nfrom typing import List, Dict, Any\n\ndef process_data_pipeline(items: List[Dict[str, Any]]) -> Dict[str, Any]:\n    """\n    Processes input data records, cleans null values, and calculates statistics.\n    """\n    start_time = time.perf_counter()\n    valid_records = [item for item in items if item and item.get("value") is not None]\n    \n    total_sum = sum(record["value"] for record in valid_records)\n    avg_value = total_sum / len(valid_records) if valid_records else 0.0\n    \n    elapsed = (time.perf_counter() - start_time) * 1000\n    \n    return {\n        "total_processed": len(items),\n        "valid_count": len(valid_records),\n        "average": round(avg_value, 2),\n        "execution_time_ms": round(elapsed, 3)\n    }\n\n# Example execution\nif __name__ == "__main__":\n    sample_data = [{"id": 1, "value": 42}, {"id": 2, "value": None}, {"id": 3, "value": 88}]\n    results = process_data_pipeline(sample_data)\n    print(f"Results: {results}")\n\`\`\`\n\nFeel free to specify the exact logic, data schema, or APIs you want to connect! 🐍`;
+      return `Here is a high-performance Python implementation adhering to PEP 8 standards with asynchronous concurrency:\n\n\`\`\`python\nimport asyncio\nimport aiohttp\nimport time\nfrom typing import List, Dict, Any\n\nasync def fetch_item(session: aiohttp.ClientSession, url: str) -> Dict[str, Any]:\n    async with session.get(url, timeout=5) as response:\n        if response.status == 200:\n            return await response.json()\n        return {"url": url, "status": response.status}\n\nasync def fetch_all(urls: List[str]) -> List[Dict[str, Any]]:\n    async with aiohttp.ClientSession() as session:\n        tasks = [fetch_item(session, url) for url in urls]\n        return await asyncio.gather(*tasks, return_exceptions=True)\n\nif __name__ == "__main__":\n    test_urls = [\n        "https://jsonplaceholder.typicode.com/todos/1",\n        "https://jsonplaceholder.typicode.com/todos/2"\n    ]\n    start = time.perf_counter()\n    results = asyncio.run(fetch_all(test_urls))\n    elapsed = (time.perf_counter() - start) * 1000\n    print(f"Processed {len(results)} requests in {elapsed:.2f}ms")\n\`\`\`\n\nLet me know what specific data logic or API you'd like to extend! 🐍`;
+    }
+
+    if (lower.includes('sql') || lower.includes('database')) {
+      return `### 🗄️ Database Design & Query Optimization\n\nHere is an optimized SQL schema and index strategy:\n\n\`\`\`sql\n-- Create indexed table with UUID primary key\nCREATE TABLE IF NOT EXISTS user_activity_logs (\n  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n  user_id VARCHAR(64) NOT NULL,\n  action_type VARCHAR(32) NOT NULL,\n  metadata JSONB DEFAULT '{}'::jsonb,\n  created_at TIMESTAMPTZ DEFAULT NOW()\n);\n\n-- Composite index for fast timestamp-based filtering per user\nCREATE INDEX idx_user_activity ON user_activity_logs(user_id, created_at DESC);\n\n-- GIN index for high-speed JSONB queries\nCREATE INDEX idx_user_activity_metadata ON user_activity_logs USING GIN (metadata);\n\`\`\`\n\n### Query with Aggregation:\n\`\`\`sql\nSELECT \n  action_type,\n  COUNT(*) AS total_count,\n  MAX(created_at) AS latest_action\nFROM user_activity_logs\nWHERE user_id = 'user_123' AND created_at > NOW() - INTERVAL '7 days'\nGROUP BY action_type\nORDER BY total_count DESC;\n\`\`\``;
     }
   }
 
-  // 8. Webpage Context if user passed a URL
+  // 9. Webpage Context if user passed a URL
   if (webpageContext) {
     return `### 🌐 Webpage Analysis\n\nI have reviewed the content from the target URL:\n\n${webpageContext.slice(0, 1200)}\n\n**Summary:**\nThe page provides structured information relevant to your inquiry. Would you like me to extract specific data tables, check technical specifications, or summarize key takeaways?`;
   }
 
-  // 9. General Question / Thoughtful Explanation
-  return `### Analysis & Insights\n\nRegarding **"${trimmed.length > 50 ? trimmed.slice(0, 50) + '...' : trimmed}"**:\n\n1. **Core Understanding**: The objective here centers on clarity, direct actionability, and reliable results.\n2. **Key Considerations**:\n   - **Architecture & Design**: Ensuring modularity and minimal overhead.\n   - **Best Practices**: Keeping implementations clean, robust, and resilient against edge cases.\n   - **Execution**: Applying direct step-by-step logic to achieve the desired outcome efficiently.\n3. **Recommended Next Steps**:\n   - Clarify any specific constraints (e.g. framework version, environment, or target platform).\n   - Let me know if you would like complete code, step-by-step guidance, or an image generated!\n\nI'm ready whenever you want to proceed! 💡`;
+  // 10. General Knowledge, Plans, & Analysis
+  return `### Comprehensive Breakdown & Action Plan\n\nRegarding **"${trimmed.length > 55 ? trimmed.slice(0, 55) + '...' : trimmed}"**:\n\n1. **Core Understanding**:\n   - The objective is focused on achieving reliable, modular, and high-performance results.\n   - Addressing edge cases early guarantees maintainability and seamless operation.\n\n2. **Recommended Implementation Strategy**:\n   - **Step 1**: Structure the core architecture with clear contracts and typed data flow.\n   - **Step 2**: Implement fail-safes and error boundaries to handle unexpected states gracefully.\n   - **Step 3**: Verify real-world performance, responsiveness, and clean memory management.\n\n\`\`\`widget:options\n{\n  "title": "Select Preferred Direction",\n  "options": [\n    "Provide Complete Production Code",\n    "Explain Architecture & Design Patterns",\n    "Generate Step-by-Step Tutorial",\n    "Create Custom Assets / Visuals"\n  ]\n}\n\`\`\`\n\nWhich of these directions would you like to explore first? 💡`;
 }

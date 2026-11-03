@@ -56,11 +56,11 @@ const Header: React.FC<HeaderProps> = ({
   const isLowCredits = userCredits < 20;
 
   return (
-    <header className="h-14 flex items-center justify-between px-3 sm:px-5 border-b border-white/5 bg-[#131314]/80 backdrop-blur-md sticky top-0 z-30">
+    <header className="h-14 flex items-center justify-between px-3 sm:px-5 border-b border-[#414141] bg-[#000000]/95 backdrop-blur-md sticky top-0 z-30">
       <div className="flex items-center gap-2 sm:gap-3">
         <button 
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-          className="p-2 hover:bg-white/10 rounded-xl transition-colors text-[#c4c7c5] hover:text-white cursor-pointer"
+          className="p-2 hover:bg-[#1A1A1A] rounded-xl transition-colors text-[#A0A0A0] hover:text-white cursor-pointer"
           title="Toggle Sidebar"
         >
           <Menu size={18} />
@@ -73,50 +73,48 @@ const Header: React.FC<HeaderProps> = ({
           onToggle={() => setIsModelMenuOpen(!isModelMenuOpen)}
         />
 
-        <div className="hidden lg:flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/5">
+        <div className="hidden lg:flex items-center gap-2 px-3 py-1 rounded-full bg-[#111111] border border-[#414141]">
           {syncStatus === 'syncing' ? (
-            <Cloud size={12} className="text-blue-400 animate-pulse" />
+            <Cloud size={12} className="text-[#4285f4] animate-pulse" />
           ) : (
-            <CheckCircle2 size={12} className="text-green-400" />
+            <CheckCircle2 size={12} className="text-[#34a853]" />
           )}
-          <span className="text-[10px] font-mono text-white/50 uppercase tracking-wider">
+          <span className="text-[10px] font-mono text-[#A0A0A0] uppercase tracking-wider">
             {syncStatus === 'syncing' ? 'Syncing...' : 'Encrypted & Synced'}
           </span>
         </div>
       </div>
 
       <div className="flex items-center gap-2 sm:gap-3">
-        {/* Credit Count Badge on Top Right (Interactive & Low-Balance Indicator) */}
+        {/* Credit Count Badge */}
         <button 
           onClick={onOpenTopUp}
           className={cn(
             "flex items-center gap-1.5 px-3 py-1.5 rounded-full font-bold text-xs transition-all cursor-pointer shadow-inner",
             isLowCredits 
               ? "bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/50 text-amber-300 ring-2 ring-amber-500/20 animate-pulse" 
-              : "bg-white/5 hover:bg-white/10 border border-white/10 text-amber-400"
+              : "bg-[#111111] hover:bg-[#1A1A1A] border border-[#414141] text-amber-400"
           )}
           title={isLowCredits ? "Low credits! Click to top up" : "Click to top up credits"}
         >
           <Zap size={14} className={isLowCredits ? "text-amber-400 fill-amber-400" : ""} />
           <span className="font-mono">{userCredits} Credits</span>
-          {isLowCredits && (
-            <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded-full bg-amber-500/30 text-amber-200">
-              Low
-            </span>
-          )}
         </button>
 
-        {/* Profile Avatar Button */}
+        {/* Profile & Settings Button */}
         <button 
           onClick={() => setIsProfileModalOpen(true)}
-          className="w-8 h-8 rounded-full bg-gradient-to-br from-[#ff4e00] to-[#ff0080] flex items-center justify-center text-xs font-bold shadow-lg hover:scale-105 transition-transform overflow-hidden shrink-0 border border-white/10 cursor-pointer"
-          title="Profile & Settings"
+          className="flex items-center gap-2 p-1 pl-1.5 pr-2.5 rounded-full bg-[#111111] hover:bg-[#1A1A1A] border border-[#414141] transition-all cursor-pointer"
+          title="Settings & Profile"
         >
-          {profileData?.avatarUrl ? (
-            <img src={profileData.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
-          ) : (
-            profileData?.avatar || 'U'
-          )}
+          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#ff4e00] to-[#9b72cb] flex items-center justify-center text-xs font-bold overflow-hidden shrink-0">
+            {profileData?.avatarUrl ? (
+              <img src={profileData.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+            ) : (
+              profileData?.avatar || 'U'
+            )}
+          </div>
+          <span className="text-xs font-semibold text-white hidden sm:inline">Settings</span>
         </button>
       </div>
     </header>

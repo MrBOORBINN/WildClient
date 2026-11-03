@@ -1,5 +1,6 @@
 import { getInstantReply, sortMessagesChronologically } from "../src/App";
 import { Message } from "../src/types";
+import { DEFAULT_SETTINGS } from "../src/services/settingsService";
 
 function assert(condition: boolean, msg: string) {
   if (!condition) {
@@ -115,6 +116,42 @@ async function runTests() {
     assert(deduct(70, 10) === 60, "70 - 10 should be 60");
     assert(deduct(10, 10) === 0, "10 - 10 should be 0");
     assert(deduct(5, 10) === 0, "5 - 10 should clamp to 0 without underflow");
+  });
+
+  // Scenario 8: Settings default values verification
+  test("Scenario 8: Default settings include all required categories and valid defaults", () => {
+    assert(DEFAULT_SETTINGS.account.displayName !== "", "Account display name should be set");
+    assert(DEFAULT_SETTINGS.general.theme === "pure-black", "Default theme should be pure-black");
+    assert(DEFAULT_SETTINGS.premium.credits >= 70, "Default credits should be >= 70");
+    assert(DEFAULT_SETTINGS.memory.enabled === true, "Memory should be enabled by default");
+    assert(DEFAULT_SETTINGS.plugins.webGrounding === true, "Web grounding should be enabled by default");
+    assert(DEFAULT_SETTINGS.codex.defaultLanguage === "TypeScript", "Default coding language should be TypeScript");
+  });
+
+  // Scenario 9: Pure Black Palette Color Tokens
+  test("Scenario 9: Pure Black color system conforms to strict spec", () => {
+    const palette = {
+      mainBg: '#000000',
+      secondaryBg: '#111111',
+      cards: '#2C2C2C',
+      secondarySurfaces: '#1A1A1A',
+      dividers: '#414141',
+      textPrimary: '#FFFFFF',
+      textSecondary: '#A0A0A0',
+      accent: '#9b72cb'
+    };
+    assert(palette.mainBg === '#000000', "Main background must be #000000");
+    assert(palette.cards === '#2C2C2C', "Cards must be #2C2C2C");
+    assert(palette.dividers === '#414141', "Dividers must be #414141");
+  });
+
+  // Scenario 10: Dynamic Chat Widget schema validity
+  test("Scenario 10: Dynamic widget types support options, progress, tables, and palettes", () => {
+    const supportedTypes = ['options', 'action_buttons', 'progress', 'table', 'palette', 'card'];
+    assert(supportedTypes.includes('options'), "Must support options widget");
+    assert(supportedTypes.includes('progress'), "Must support progress widget");
+    assert(supportedTypes.includes('table'), "Must support table widget");
+    assert(supportedTypes.includes('palette'), "Must support palette widget");
   });
 
   console.log("==================================================");

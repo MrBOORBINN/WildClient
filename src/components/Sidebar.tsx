@@ -143,23 +143,23 @@ const Sidebar = ({
       initial={false}
       animate={{ x: isOpen ? 0 : -270 }}
       className={cn(
-        "fixed lg:relative inset-y-0 left-0 w-[270px] bg-[#171718] border-r border-white/5 z-50 flex flex-col transition-all duration-300 ease-in-out shadow-2xl lg:shadow-none",
+        "fixed lg:relative inset-y-0 left-0 w-[270px] bg-[#000000] border-r border-[#414141] z-50 flex flex-col transition-all duration-300 ease-in-out shadow-2xl lg:shadow-none",
         !isOpen && "lg:w-0 lg:opacity-0 lg:pointer-events-none"
       )}
     >
-      <div className="p-3 flex flex-col h-full">
+      <div className="p-3 flex flex-col h-full bg-[#000000]">
         <div className="flex items-center gap-2 mb-2">
           {/* New Chat Button */}
           <button 
             onClick={onNewChat}
-            className="flex-1 flex items-center justify-center gap-2.5 p-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all text-sm font-medium text-white shadow-sm hover:scale-[1.01]"
+            className="flex-1 flex items-center justify-center gap-2.5 p-2.5 rounded-xl bg-[#111111] border border-[#414141] hover:bg-[#1A1A1A] transition-all text-sm font-medium text-white shadow-sm hover:scale-[1.01]"
           >
-            <Plus size={16} className="text-blue-400" />
+            <Plus size={16} className="text-[#9b72cb]" />
             <span>New conversation</span>
           </button>
           <button
             onClick={onClose}
-            className="p-2.5 rounded-xl hover:bg-white/10 text-[#8e918f] hover:text-white transition-colors border border-white/5 shrink-0 lg:hidden"
+            className="p-2.5 rounded-xl hover:bg-[#1A1A1A] text-[#A0A0A0] hover:text-white transition-colors border border-[#414141] shrink-0 lg:hidden"
             title="Close sidebar"
           >
             <X size={16} />
@@ -246,26 +246,27 @@ const Sidebar = ({
       </div>
 
       {/* Footer Navigation */}
-      <div className="mt-auto pt-3 border-t border-white/5 space-y-1">
+      <div className="mt-auto pt-3 border-t border-[#414141] space-y-1">
         <button 
           onClick={onOpenBackground}
-          className="flex items-center gap-3 w-full p-2 rounded-lg hover:bg-white/5 transition-colors text-xs text-[#c4c7c5] hover:text-white"
+          className="flex items-center gap-3 w-full p-2 rounded-lg hover:bg-[#1A1A1A] transition-colors text-xs text-[#A0A0A0] hover:text-white"
         >
-          <ImageIcon size={15} className="text-[#8e918f]" />
+          <ImageIcon size={15} className="text-[#A0A0A0]" />
           <span>Appearance & Canvas</span>
         </button>
         <button 
           onClick={onOpenHelp}
-          className="flex items-center gap-3 w-full p-2 rounded-lg hover:bg-white/5 transition-colors text-xs text-[#c4c7c5] hover:text-white"
+          className="flex items-center gap-3 w-full p-2 rounded-lg hover:bg-[#1A1A1A] transition-colors text-xs text-[#A0A0A0] hover:text-white"
         >
-          <HelpCircle size={15} className="text-[#8e918f]" />
+          <HelpCircle size={15} className="text-[#A0A0A0]" />
           <span>Help & System Info</span>
         </button>
         <button 
           onClick={onOpenProfile}
-          className="flex items-center gap-2.5 w-full p-2 rounded-xl hover:bg-white/5 transition-colors text-xs text-[#c4c7c5] hover:text-white mt-1 border border-white/5"
+          className="flex items-center gap-2.5 w-full p-2.5 rounded-xl bg-[#111111] hover:bg-[#1A1A1A] transition-colors text-xs text-white mt-1 border border-[#414141]"
+          title="Open Settings"
         >
-          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#ff4e00] to-[#ff0080] flex items-center justify-center text-[10px] font-bold overflow-hidden shrink-0">
+          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#ff4e00] to-[#9b72cb] flex items-center justify-center text-[10px] font-bold overflow-hidden shrink-0">
             {(() => {
               const avatarSrc = user?.avatarUrl || user?.photoURL || user?.avatar_url;
               return avatarSrc ? (
@@ -275,8 +276,8 @@ const Sidebar = ({
               );
             })()}
           </div>
-          <span className="truncate font-medium">{user?.displayName || user?.full_name || user?.email || 'User'}</span>
-          <Settings size={13} className="ml-auto opacity-50 shrink-0" />
+          <span className="truncate font-semibold flex-1 text-left">{user?.displayName || user?.full_name || user?.email || 'Settings & Profile'}</span>
+          <Settings size={14} className="text-[#9b72cb] shrink-0" />
         </button>
       </div>
     </div>

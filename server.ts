@@ -1290,6 +1290,10 @@ async function startServer() {
     return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
   }
 
+  // Resilient quota circuit breakers for zero-downtime, unlimited chat
+  let geminiQuotaBlockedUntil = 0;
+  let searchGroundingDisabledUntil = 0;
+
   // SSE endpoint for streaming chat
   app.post("/api/chat", async (req, res) => {
     const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
@@ -1386,12 +1390,13 @@ async function startServer() {
         geminiHistory.pop();
       }
 
-      // Intelligent Tool-Selection: Detect when current events, news, comparison or fresh web retrieval is needed
+      // Intelligent Tool-Selection: Only attach googleSearch when available and explicitly needed
+      const isSearchGroundingAvailable = Date.now() >= searchGroundingDisabledUntil;
       const needsSearch = Boolean(
-        enableSearch ||
-        /\b(today|yesterday|tomorrow|current|currently|now|latest|news|update|recent|recently|stock|price|weather|release|score|live|election|happened|events|events today)\b/i.test(message || '') ||
-        /\b(compare|versus|vs)\b/i.test(message || '') ||
-        /https?:\/\/[^\s]+/i.test(message || '')
+        isSearchGroundingAvailable && (
+          enableSearch ||
+          /\b(search the web|search google|look up online|latest news today|today's weather)\b/i.test(message || '')
+        )
       );
 
       const tools: any[] = [];
